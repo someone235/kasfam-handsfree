@@ -68,3 +68,32 @@ npm run web
 ```
 
 Then visit `http://localhost:4000`. Use the filter controls to narrow results by the model's `approved` status or by the `humanDecision` column (Approved, Rejected, or Unset). Each row exposes a dropdown that lets you set the human decision to `APPROVED` or `REJECTED`; changes persist immediately to the SQLite database.
+
+### Docker image
+
+You can also run the dashboard in Docker (uses the same SQLite file path inside the container unless overridden):
+
+```bash
+docker build -t kaspa-handsfree .
+docker run -p 4000:4000 \
+	-e OPENAI_API_KEY="$OPENAI_API_KEY" \
+	-e SQLITE_DB_PATH=/data/app.db \
+	-v "$(pwd)/data:/data" \
+	kaspa-handsfree
+```
+
+The entrypoint automatically runs database migrations before starting `dist/server.js`. Customize `PORT`, `SQLITE_DB_PATH`, or mount an external SQLite file as needed.
+
+### Docker Compose (persistent volume)
+
+For a ready-to-run setup with an automatic named volume:
+
+```bash
+# launch the web dashboard
+OPENAI_API_KEY=sk-your-key docker compose up --build web
+
+# run the CLI processor once (shares the same volume)
+OPENAI_API_KEY=sk-your-key docker compose run processor
+```
+
+The `web` service exposes `http://localhost:4000` and stays running, while the `processor` service executes the GPT moderation loop defined in `dist/index.js`. Both share the `kaspa-data` volume, so database changes are visible between them.

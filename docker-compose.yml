@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  web:
+    build: .
+    image: kaspa-handsfree:latest
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SQLITE_DB_PATH: /data/app.db
+      PORT: "4000"
+      APP_MODE: server
+    network_mode: host
+    volumes:
+      - kaspa-data:/data
+
+  processor:
+    build: .
+    image: kaspa-handsfree:latest
+    restart: "no"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SQLITE_DB_PATH: /data/app.db
+      APP_MODE: cli
+    volumes:
+      - kaspa-data:/data
+
+volumes:
+  kaspa-data:
