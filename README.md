@@ -24,20 +24,15 @@ export OPENAI_API_KEY="sk-your-key"
 ### Development mode (TypeScript directly)
 
 ```bash
-npm run dev -- --question "Why is async IO helpful?"
+npm run dev
 ```
 
 ### Build and run compiled output
 
 ```bash
 npm run build
-npm start -- "Give me today's top ML headline"
+npm start
 ```
-
-Command-line options:
-
-- `-q, --question <text>` Question to send (you can also append the question after the options)
-- `-h, --help` Show inline usage info
 
 The system prompt lives in `src/prompt.ts`. Edit that file if you need a different tone or instruction set. The script prints the model's answer to stdout and falls back to dumping the raw response if no text output is available.
 
@@ -92,7 +87,7 @@ For a ready-to-run setup with an automatic named volume:
 # launch the web dashboard
 OPENAI_API_KEY=sk-your-key docker compose up --build web
 
-# run the CLI processor once (shares the same volume)
+# run the CLI processor
 OPENAI_API_KEY=sk-your-key docker compose run processor
 ```
 
