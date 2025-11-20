@@ -1,51 +1,10 @@
+import Database, { Database as SqliteDatabase } from "better-sqlite3";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import OpenAI from "openai";
 import { prompt as systemPrompt } from "./prompt.js";
 
-const client = new OpenAI({ apiKey: assertApiKey() });
-
-function parseArgs(args: string[]) {
-  const questionParts: string[] = [];
-
-  for (let i = 0; i < args.length; i += 1) {
-    const current = args[i];
-
-    if (current === "--question" || current === "-q") {
-      const next = args[i + 1];
-      if (!next) {
-        throw new Error("--question requires a value");
-      }
-      questionParts.push(next);
-      i += 1;
-      continue;
-    }
-
-    if (current === "--help" || current === "-h") {
-      printHelp();
-      process.exit(0);
-    }
-
-    questionParts.push(current);
-  }
-
-  const question = questionParts.join(" ").trim();
-
-  if (!question) {
-    throw new Error(
-      "Please provide a question (use --question or append it to the command)."
-    );
-  }
-
-  return { question };
-}
-
-function printHelp() {
-  console.log(`Usage: npm run dev -- [options] <question>
-
-Options:
-  -q, --question <text>   Question to ask GPT-5.1 (can also be passed as trailing args)
-  -h, --help              Show this message
-`);
-}
+const openAiClient = new OpenAI({ apiKey: assertApiKey() });
 
 function assertApiKey(): string {
   const key = process.env.OPENAI_API_KEY;
@@ -57,10 +16,8 @@ function assertApiKey(): string {
 
 async function ask(
   question: string
-): Promise<{ text?: string; approved: boolean }> {
-  const client = new OpenAI({ apiKey: assertApiKey() });
-
-  const response = await client.responses.create({
+): Promise<{ quote?: string; approved: boolean }> {
+  const response = await openAiClient.responses.create({
     model: "gpt-5.1",
     input: [
       { role: "system", content: systemPrompt },
@@ -68,10 +25,10 @@ async function ask(
     ],
   });
 
-  const text = response.output_text?.trim();
-  const approved = !text?.startsWith("Rejected");
+  const quote = response.output_text?.trim();
+  const approved = !quote?.startsWith("Rejected");
   return {
-    text,
+    quote: quote,
     approved,
   };
 }
@@ -81,6 +38,64 @@ type Tweet = {
   text: string;
   url: string;
 };
+
+type TweetDecision = Tweet & {
+  quote: string;
+  approved: boolean;
+};
+
+function resolveDbPath() {
+  const inputPath = process.env.SQLITE_DB_PATH || "data/app.db";
+  const resolved = path.resolve(inputPath);
+  mkdirSync(path.dirname(resolved), { recursive: true });
+  return resolved;
+}
+
+function ensureTweetsTable(db: SqliteDatabase) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tweets (
+      id TEXT PRIMARY KEY,
+      text TEXT NOT NULL,
+      quote TEXT NOT NULL,
+      url TEXT NOT NULL,
+      approved INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tweets_id ON tweets(id);
+  `);
+}
+
+function createTweetStore() {
+  const dbPath = resolveDbPath();
+  const db = new Database(dbPath);
+  db.pragma("journal_mode = WAL");
+  ensureTweetsTable(db);
+
+  const upsert = db.prepare(
+    `INSERT INTO tweets (id, text, quote, url, approved)
+     VALUES (@id, @text, @quote, @url, @approved)
+     ON CONFLICT(id) DO UPDATE SET
+       text = excluded.text,
+       quote = excluded.quote,
+       url = excluded.url,
+       approved = excluded.approved`
+  );
+
+  return {
+    save(decision: TweetDecision) {
+      upsert.run({
+        ...decision,
+        approved: decision.approved ? 1 : 0,
+      });
+    },
+    close() {
+      db.close();
+    },
+  };
+}
+
+type TweetStore = ReturnType<typeof createTweetStore>;
 
 async function getKaspaTweets(): Promise<Tweet[]> {
   const res = await fetch("https://kaspa.news/api/kaspa-tweets", {
@@ -96,28 +111,37 @@ async function getKaspaTweets(): Promise<Tweet[]> {
 }
 
 async function main() {
+  let store: TweetStore | null = null;
   try {
+    store = createTweetStore();
     const tweets = await getKaspaTweets();
 
     for (let tweet of tweets) {
       console.info(`\nSending question to GPT-5.1...`);
-      const { text, approved } = await ask(tweet.text);
+      const { quote, approved } = await ask(tweet.text);
+
+      store.save({
+        ...tweet,
+        quote: quote ?? "",
+        approved,
+      });
 
       if (!approved) {
         continue;
       }
+
       console.info(`Question: ${tweet.text}`);
 
       console.log(`Approved status: ${approved}`);
 
-      if (!text) {
+      if (!quote) {
         console.warn("No textual output returned by the model.");
         process.exitCode = 2;
         return;
       }
 
       console.log("\n=== GPT-5.1 Response ===\n");
-      console.log(text);
+      console.log(quote);
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -126,6 +150,8 @@ async function main() {
       console.error("Unknown error", error);
     }
     process.exitCode = 1;
+  } finally {
+    store?.close();
   }
 }
 

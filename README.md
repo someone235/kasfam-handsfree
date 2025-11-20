@@ -40,3 +40,17 @@ Command-line options:
 - `-h, --help` Show inline usage info
 
 The system prompt lives in `src/prompt.ts`. Edit that file if you need a different tone or instruction set. The script prints the model's answer to stdout and falls back to dumping the raw response if no text output is available.
+
+## Database migrations
+
+A simple SQLite migration for storing tweet decisions is included in `migrations/001_create_tweets_table.sql`. Run it through npm (powered by the bundled [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) driver—no external sqlite binary needed):
+
+```bash
+# optional: export SQLITE_DB_PATH=/absolute/path/to/db.sqlite
+npm run migrate
+
+# or supply the db path as a positional argument
+npm run migrate -- ./data/moderation.db
+```
+
+By default the script writes to `data/app.db`. All `.sql` files inside `migrations/` are executed in order, creating the `tweets` table with `id`, `text`, `url`, `approved`, and `createdAt` columns (`id` remains unique via the primary key and index).
