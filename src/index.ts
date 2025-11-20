@@ -1,24 +1,11 @@
 import OpenAI from "openai";
-
-const DEFAULT_PROMPT =
-  "You are a concise research assistant who answers directly and cites any important sources when possible.";
+import { prompt as systemPrompt } from "./prompt.js";
 
 function parseArgs(args: string[]) {
-  let prompt = process.env.CUSTOM_PROMPT?.trim() || DEFAULT_PROMPT;
   const questionParts: string[] = [];
 
   for (let i = 0; i < args.length; i += 1) {
     const current = args[i];
-
-    if (current === "--prompt" || current === "-p") {
-      const next = args[i + 1];
-      if (!next) {
-        throw new Error("--prompt requires a value");
-      }
-      prompt = next;
-      i += 1;
-      continue;
-    }
 
     if (current === "--question" || current === "-q") {
       const next = args[i + 1];
@@ -46,7 +33,7 @@ function parseArgs(args: string[]) {
     );
   }
 
-  return { prompt, question };
+  return { question };
 }
 
 function printHelp() {
@@ -54,7 +41,6 @@ function printHelp() {
 
 Options:
   -q, --question <text>   Question to ask GPT-5.1 (can also be passed as trailing args)
-  -p, --prompt <text>     Custom system prompt/instructions (or set CUSTOM_PROMPT env)
   -h, --help              Show this message
 `);
 }
@@ -69,17 +55,17 @@ function assertApiKey(): string {
 
 async function main() {
   try {
-    const { prompt, question } = parseArgs(process.argv.slice(2));
+    const { question } = parseArgs(process.argv.slice(2));
     const client = new OpenAI({ apiKey: assertApiKey() });
 
     console.info(`\nSending question to GPT-5.1...`);
-    console.info(`Prompt: ${prompt}`);
+    // console.info(`Prompt: ${systemPrompt}`);
     console.info(`Question: ${question}`);
 
     const response = await client.responses.create({
       model: "gpt-5.1",
       input: [
-        { role: "system", content: prompt },
+        { role: "system", content: systemPrompt },
         { role: "user", content: question },
       ],
     });
