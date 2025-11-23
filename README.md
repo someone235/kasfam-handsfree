@@ -1,6 +1,6 @@
-# Handsfree GPT-5.1 CLI
+# Kasfam Handsfree
 
-Ask GPT-5.1 anything from your terminal using the official OpenAI JavaScript SDK and a fixed system prompt defined in `src/prompt.ts`.
+This tool finds candidates to quote on Kaspa twitter, and suggests the text following to the quotation. You can edit the prompt that "judges" tweets in `src/prompt.ts`.
 
 ## Prerequisites
 
