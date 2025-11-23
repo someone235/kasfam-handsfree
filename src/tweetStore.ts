@@ -123,6 +123,12 @@ export function createTweetStore() {
       `
       ).run({ id, decision });
     },
+    has(id: string): boolean {
+      const row = db
+        .prepare("SELECT 1 FROM tweets WHERE id = @id")
+        .get({ id });
+      return !!row;
+    },
     close() {
       db.close();
     },

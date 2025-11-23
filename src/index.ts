@@ -61,6 +61,12 @@ async function main() {
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i];
       console.info(`Reading tweet ${i}`);
+
+      if (store.has(tweet.id)) {
+        console.info(`Skipping tweet ${tweet.id} (already exists)`);
+        continue;
+      }
+
       console.info(`\nSending question to GPT-5.1...`);
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
       const { quote, approved } = await ask(tweet.text);
