@@ -28,11 +28,7 @@ app.post("/tweets/:id/human-decision", (req, res) => {
     password?: string;
   };
 
-  console.log("Received POST request with body:", req.body);
-  console.log("ADMIN_PASSWORD:", ADMIN_PASSWORD);
-  console.log("password:", password); 
   if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
-    console.log("Unauthorized: Invalid or missing password.");
     return res.status(401).send("Unauthorized: Invalid or missing password.");
   }
 

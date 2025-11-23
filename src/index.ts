@@ -60,7 +60,7 @@ async function main() {
 
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i];
-      console.info(`Reading tweet ${i}`);
+      console.info(`Reading tweet ${i + 1} of ${tweets.length}`);
 
       if (store.has(tweet.id)) {
         console.info(`Skipping tweet ${tweet.id} (already exists)`);
