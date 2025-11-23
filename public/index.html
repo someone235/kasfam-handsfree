@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Kaspa Tweets</title>
+  <title>Kaspa Tweets - Public</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
     a { color: #38bdf8; }
@@ -11,30 +11,19 @@
     th { background: #1e293b; }
     tr:nth-child(odd) { background: #0f172a; }
     tr:nth-child(even) { background: #1e293b; }
-    form { margin: 0; }
-    select, button, input { font: inherit; background: #1e293b; color: white; border: 1px solid #334155; padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
+    select, button { font: inherit; background: #1e293b; color: white; border: 1px solid #334155; padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
     button { cursor: pointer; background: #3b82f6; border-color: #2563eb; }
     button:hover { background: #2563eb; }
     .filters { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
     .filters select { min-width: 10rem; }
     .quote { white-space: pre-line; }
-    .decision-form { display: flex; gap: 0.5rem; align-items: center; }
-    .status-icon { font-size: 1.2em; }
     #loading { display: none; color: #94a3b8; margin-left: 1rem; }
   </style>
 </head>
 <body>
-  <h1>Kaspa Tweet Decisions</h1>
+  <h1>Kaspa Tweets (Approved)</h1>
   
   <div class="filters">
-    <label>
-      Model approved:
-      <select id="filter-approved">
-        <option value="all">All</option>
-        <option value="true">Approved</option>
-        <option value="false">Rejected</option>
-      </select>
-    </label>
     <label>
       Human decision:
       <select id="filter-human">
@@ -48,13 +37,6 @@
     <span id="loading">Loading...</span>
   </div>
 
-  <div style="margin-top: 1rem; margin-bottom: 1rem;">
-    <label>
-      Admin Password:
-      <input type="password" id="admin-password" placeholder="Enter password" />
-    </label>
-  </div>
-
   <table>
     <thead>
       <tr>
@@ -62,8 +44,6 @@
         <th>Tweet</th>
         <th>Quote</th>
         <th>URL</th>
-        <th>Model Approved</th>
-        <th>Human Decision</th>
         <th>Created</th>
       </tr>
     </thead>
@@ -73,30 +53,17 @@
   </table>
 
   <script>
-    const API_BASE = '/api/tweets';
+    const API_BASE = '/api/approved';
     const tweetsBody = document.getElementById('tweets-body');
-    const filterApproved = document.getElementById('filter-approved');
     const filterHuman = document.getElementById('filter-human');
     const refreshBtn = document.getElementById('refresh-btn');
     const loadingIndicator = document.getElementById('loading');
-    const passwordInput = document.getElementById('admin-password');
-
-    // Load password from local storage
-    const savedPassword = localStorage.getItem('kasfam_admin_password');
-    if (savedPassword) {
-      passwordInput.value = savedPassword;
-    }
-
-    passwordInput.addEventListener('input', (e) => {
-      localStorage.setItem('kasfam_admin_password', e.target.value);
-    });
 
     async function fetchTweets() {
       loadingIndicator.style.display = 'inline';
-      tweetsBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Loading...</td></tr>';
+      tweetsBody.innerHTML = '<tr><td colspan="5" style="text-align:center">Loading...</td></tr>';
       
       const params = new URLSearchParams();
-      if (filterApproved.value !== 'all') params.append('approved', filterApproved.value);
       if (filterHuman.value !== 'all') params.append('humanDecision', filterHuman.value);
 
       try {
@@ -106,7 +73,7 @@
         renderTweets(tweets);
       } catch (err) {
         console.error(err);
-        tweetsBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
+        tweetsBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
       } finally {
         loadingIndicator.style.display = 'none';
       }
@@ -114,64 +81,22 @@
 
     function renderTweets(tweets) {
       if (tweets.length === 0) {
-        tweetsBody.innerHTML = '<tr><td colspan="7" style="text-align:center">No tweets found</td></tr>';
+        tweetsBody.innerHTML = '<tr><td colspan="5" style="text-align:center">No tweets found</td></tr>';
         return;
       }
 
       tweetsBody.innerHTML = tweets.map(tweet => {
-        const decisionValue = tweet.humanDecision || "";
         return `
           <tr>
             <td>${escapeHtml(tweet.id)}</td>
             <td>${escapeHtml(tweet.text)}</td>
             <td class="quote">${escapeHtml(tweet.quote)}</td>
             <td><a href="${escapeHtml(tweet.url)}" target="_blank" rel="noreferrer">link</a></td>
-            <td class="status-icon">${tweet.approved ? "✅" : "❌"}</td>
-            <td>
-              <div class="decision-form">
-                <select class="decision-select" data-id="${tweet.id}">
-                  <option value="" disabled ${!decisionValue ? "selected" : ""}>Choose…</option>
-                  <option value="APPROVED" ${decisionValue === "APPROVED" ? "selected" : ""}>APPROVED</option>
-                  <option value="REJECTED" ${decisionValue === "REJECTED" ? "selected" : ""}>REJECTED</option>
-                </select>
-                <button onclick="saveDecision('${tweet.id}')">Save</button>
-              </div>
-            </td>
             <td>${escapeHtml(new Date(tweet.createdAt).toLocaleString())}</td>
           </tr>
         `;
       }).join('');
     }
-
-    window.saveDecision = async (id) => {
-      const select = document.querySelector(`.decision-select[data-id="${id}"]`);
-      const decision = select.value;
-      const password = passwordInput.value;
-
-      if (!decision) return;
-
-      try {
-        const res = await fetch(`/tweets/${id}/human-decision`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ decision, password })
-        });
-
-        if (!res.ok) {
-          const text = await res.text();
-          alert(`Error: ${text}`);
-          return;
-        }
-
-        // Ideally we just update the UI state here or re-fetch, but for simplicity let's re-fetch to ensure sync
-        fetchTweets();
-      } catch (err) {
-        console.error(err);
-        alert('Failed to save decision');
-      }
-    };
 
     function escapeHtml(value) {
       if (!value) return '';
@@ -183,7 +108,6 @@
         .replace(/'/g, "&#39;");
     }
 
-    filterApproved.addEventListener('change', fetchTweets);
     filterHuman.addEventListener('change', fetchTweets);
     refreshBtn.addEventListener('click', fetchTweets);
 

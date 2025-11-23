@@ -15,7 +15,20 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 app.get("/api/tweets", (req, res) => {
+  const password = req.query.password as string;
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
   const { filters } = parseFilters(req.query);
+  const tweets = store.list(filters);
+  res.json(tweets);
+});
+
+app.get("/api/approved", (req, res) => {
+  const { filters } = parseFilters(req.query);
+  // Force approved=true for public endpoint
+  filters.approved = true;
   const tweets = store.list(filters);
   res.json(tweets);
 });
