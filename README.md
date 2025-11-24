@@ -34,6 +34,18 @@ npm run build
 npm start
 ```
 
+### CLI Options
+
+The app pulls all available tweets from the source(kaspa-news) and by default we will send them all to chatgpt for processing. You can limit the number of tweets processed by the LLM using the `--limit` flag. Useful for dev.
+
+```bash
+# process all tweets (default)
+npm run dev
+
+# process only the latest 50 tweets
+npm run dev -- --limit 50
+```
+
 The system prompt lives in `src/prompt.ts`. Edit that file if you need a different tone or instruction set. The script prints the model's answer to stdout and falls back to dumping the raw response if no text output is available.
 
 ## Database migrations

@@ -12,7 +12,7 @@ type Tweet = {
 
 type TweetStore = ReturnType<typeof createTweetStore>;
 
-async function getKaspaTweets(): Promise<Tweet[]> {
+async function getKaspaTweets(limit?: number): Promise<Tweet[]> {
   const res = await fetch("https://kaspa.news/api/kaspa-tweets", {
     headers: { Accept: "application/json" },
   });
@@ -22,18 +22,68 @@ async function getKaspaTweets(): Promise<Tweet[]> {
     );
   }
   const response = await res.json();
-  return response.tweets ?? [];
+  const allTweets = response.tweets ?? [];
+
+  // Apply client-side limiting if specified
+  if (limit !== undefined && limit > 0) {
+    return allTweets.slice(0, limit);
+  }
+
+  return allTweets;
 }
 
 function log(msg: string) {
   console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
 }
 
+type ParsedArgs = {
+  limit: number | undefined;
+};
+
+function extractArguments(args: string[]): ParsedArgs {
+  // how many tweets to send through to gpt for 'processing', default to no limit (all tweets)
+  let limit: number | undefined = undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--limit') {
+      if (i + 1 >= args.length) {
+        throw new Error('--limit requires a value');
+      }
+      limit = parseInt(args[i + 1], 10);
+      i++;
+    } else if (args[i].startsWith('--')) {
+      throw new Error(`Unknown argument: ${args[i]}`);
+    } else if (i === 0 || !args[i - 1].startsWith('--')) {
+      // standalone value that's not following a flag
+      throw new Error(`Unexpected argument: ${args[i]}`);
+    }
+  }
+
+  return { limit };
+}
+
+function validateArguments(parsed: ParsedArgs): void {
+  if (parsed.limit !== undefined) {
+    if (isNaN(parsed.limit) || parsed.limit <= 0) {
+      throw new Error(`Invalid --limit value: must be a positive integer, got ${parsed.limit}`);
+    }
+  }
+}
+
+function parseArgs(): ParsedArgs {
+  const args = process.argv.slice(2);
+  const parsed = extractArguments(args);
+  validateArguments(parsed);
+  return parsed;
+}
+
 async function main() {
+  const { limit } = parseArgs();
+
   let store: TweetStore | null = null;
   try {
     store = createTweetStore();
-    const tweets = await getKaspaTweets();
+    const tweets = await getKaspaTweets(limit);
 
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i];
