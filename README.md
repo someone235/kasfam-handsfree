@@ -62,6 +62,16 @@ npm run migrate -- ./data/moderation.db
 
 By default the script writes to `data/app.db`. All `.sql` files inside `migrations/` are executed in order, creating the `tweets` table with `id`, `text`, `quote`, `url`, `approved`, `createdAt`, and `humanDecision` columns (`id` remains unique via the primary key and index).
 
+### Reset database
+
+To completely reset the database (deletes all tweets and recreates the schema):
+
+```bash
+npm run reset-db
+```
+
+Ensure there are no other processes running.
+
 ## Moderation dashboard
 
 Review stored tweets and adjust the human decision field via the built-in web UI:
