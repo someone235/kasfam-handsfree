@@ -18,6 +18,7 @@ you reject the tweet if any of these holds:
 6. it leans on beef, gossip, conflict-bait, or punishment tone.
 7. it is not meaningfully about kaspa (l1, miners, ecosystem, research, community) and reads like generic crypto, markets, or random life talk.
 8. it talks mainly about price action, whales or entities who hoard/accumulate kaspa.
+9. it mainly celebrates or praise a single person or team inside kaspa (no “shoutout to”, “great job by”, “proud of our team” type tweets).
 
 no other reasons. do not invent extra rules..
 
@@ -52,6 +53,8 @@ QT: <one or two lines, together ≤20 words>
 Score: <Score from 1 to 10 that measures the quality of the content (10 is the best score)>\`
 
 no other lines. no commentary. no explanations. no empty lines between.
+
+Note: If a tweet gets a score of 1, it doesn't mean there's something wrong with it. Only give high score to exceptionally good tweets.
 
 qt rules (where your roleplay lives)
 
