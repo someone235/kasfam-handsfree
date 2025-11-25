@@ -121,7 +121,7 @@
           <th>URL</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
-          <th>Created</th>
+          <th>Date</th>
         </tr>
       </thead>
       <tbody id="tweets-body">
@@ -272,7 +272,7 @@
             )}" target="_blank" rel="noreferrer">link</a></td>
             <td class="status-icon">${tweet.approved ? "✅" : "❌"}</td>
             <td>${tweet.humanDecision || "UNSET"}</td>
-            <td>${escapeHtml(new Date(tweet.createdAt).toLocaleString())}</td>
+            <td>${escapeHtml(new Date(tweet.updatedAt || tweet.createdAt).toLocaleString())}</td>
           </tr>
         `;
           })
@@ -371,7 +371,7 @@
         fetchTweets();
       });
 
-      // Initial load
+      // initial load
       applyFiltersFromUrl();
       fetchTweets();
     </script>

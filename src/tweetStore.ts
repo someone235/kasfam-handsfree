@@ -12,6 +12,7 @@ export type TweetRecord = {
   approved: boolean | null;
   score: number;
   createdAt: string;
+  updatedAt: string | null;
   humanDecision: HumanDecision | null;
 };
 
@@ -70,6 +71,7 @@ function initDb(): SqliteDatabase {
       approved INTEGER DEFAULT NULL,
       score INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt TEXT DEFAULT NULL,
       humanDecision TEXT DEFAULT NULL CHECK(humanDecision IN ('APPROVED','REJECTED'))
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tweets_id ON tweets(id);
@@ -81,14 +83,15 @@ export function createTweetStore() {
   const db = initDb();
 
   const upsertWithDecision = db.prepare(`
-    INSERT INTO tweets (id, text, quote, url, approved, score)
-    VALUES (@id, @text, @quote, @url, @approved, @score)
+    INSERT INTO tweets (id, text, quote, url, approved, score, updatedAt)
+    VALUES (@id, @text, @quote, @url, @approved, @score, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       text = excluded.text,
       quote = excluded.quote,
       url = excluded.url,
       approved = excluded.approved,
-      score = excluded.score
+      score = excluded.score,
+      updatedAt = datetime('now')
   `);
 
   const insertRaw = db.prepare(`
@@ -141,9 +144,9 @@ export function createTweetStore() {
       `;
 
       const sql = `
-        SELECT id, text, quote, url, approved, score, createdAt, humanDecision
+        SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision
         ${baseQuery}
-        ORDER BY datetime(createdAt) DESC
+        ORDER BY datetime(COALESCE(updatedAt, createdAt)) DESC
         LIMIT @limit OFFSET @offset
       `;
 
@@ -159,6 +162,7 @@ export function createTweetStore() {
         approved: number | null;
         score: number;
         createdAt: string;
+        updatedAt: string | null;
         humanDecision: HumanDecision | null;
       }>;
 
@@ -170,6 +174,7 @@ export function createTweetStore() {
         ...row,
         approved: row.approved === null ? null : Boolean(row.approved),
         score: Number(row.score) || 0,
+        updatedAt: row.updatedAt ?? null,
         humanDecision: row.humanDecision ?? null,
       }));
 
@@ -184,7 +189,7 @@ export function createTweetStore() {
       const row = db
         .prepare(
           `
-        SELECT id, text, quote, url, approved, score, createdAt, humanDecision
+        SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision
         FROM tweets
         WHERE id = @id
       `
@@ -198,6 +203,7 @@ export function createTweetStore() {
             approved: number | null;
             score: number;
             createdAt: string;
+            updatedAt: string | null;
             humanDecision: HumanDecision | null;
           }
         | undefined;
@@ -210,6 +216,7 @@ export function createTweetStore() {
         ...row,
         approved: row.approved === null ? null : Boolean(row.approved),
         score: Number(row.score) || 0,
+        updatedAt: row.updatedAt ?? null,
         humanDecision: row.humanDecision ?? null,
       };
     },
@@ -217,7 +224,7 @@ export function createTweetStore() {
       db.prepare(
         `
         UPDATE tweets
-        SET humanDecision = @decision
+        SET humanDecision = @decision, updatedAt = datetime('now')
         WHERE id = @id
       `
       ).run({ id, decision });
