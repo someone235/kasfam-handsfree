@@ -48,7 +48,8 @@ if rejecting:
 
 if approving:
 \`Approved.
-QT: <one or two lines, together ≤20 words>\`
+QT: <one or two lines, together ≤20 words>
+Score: <Score from 1 to 10 that measures the quality of the content>\`
 
 no other lines. no commentary. no explanations. no empty lines between.
 

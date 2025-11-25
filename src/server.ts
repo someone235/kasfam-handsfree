@@ -92,11 +92,8 @@ app.post("/tweets/:id/reeval", async (req, res) => {
     }
 
     store.save({
-      id: tweet.id,
-      text: tweet.text,
-      url: tweet.url,
+      ...tweet,
       quote,
-      approved,
     });
 
     const updatedTweet = store.get(tweet.id);

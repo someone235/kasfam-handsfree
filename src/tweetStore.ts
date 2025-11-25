@@ -10,6 +10,7 @@ export type TweetRecord = {
   quote: string;
   url: string;
   approved: boolean;
+  score: number;
   createdAt: string;
   humanDecision: HumanDecision | null;
 };
@@ -20,6 +21,7 @@ export type TweetDecisionInput = {
   quote: string;
   url: string;
   approved: boolean;
+  score: number;
 };
 
 export type TweetFilters = {
@@ -59,6 +61,7 @@ function initDb(): SqliteDatabase {
       quote TEXT NOT NULL,
       url TEXT NOT NULL,
       approved INTEGER NOT NULL DEFAULT 0,
+      score INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL DEFAULT (datetime('now')),
       humanDecision TEXT DEFAULT NULL CHECK(humanDecision IN ('APPROVED','REJECTED'))
     );
@@ -71,13 +74,14 @@ export function createTweetStore() {
   const db = initDb();
 
   const upsert = db.prepare(`
-    INSERT INTO tweets (id, text, quote, url, approved)
-    VALUES (@id, @text, @quote, @url, @approved)
+    INSERT INTO tweets (id, text, quote, url, approved, score)
+    VALUES (@id, @text, @quote, @url, @approved, @score)
     ON CONFLICT(id) DO UPDATE SET
       text = excluded.text,
       quote = excluded.quote,
       url = excluded.url,
-      approved = excluded.approved
+      approved = excluded.approved,
+      score = excluded.score
   `);
 
   return {
@@ -113,9 +117,9 @@ export function createTweetStore() {
       `;
 
       const sql = `
-        SELECT id, text, quote, url, approved, createdAt, humanDecision
+        SELECT id, text, quote, url, approved, score, createdAt, humanDecision
         ${baseQuery}
-        ORDER BY datetime(createdAt) DESC
+        ORDER BY score DESC, datetime(createdAt) DESC
         LIMIT @limit OFFSET @offset
       `;
 
@@ -129,6 +133,7 @@ export function createTweetStore() {
         quote: string;
         url: string;
         approved: number;
+        score: number;
         createdAt: string;
         humanDecision: HumanDecision | null;
       }>;
@@ -140,6 +145,7 @@ export function createTweetStore() {
       const tweets = rows.map((row) => ({
         ...row,
         approved: Boolean(row.approved),
+        score: Number(row.score) || 0,
         humanDecision: row.humanDecision ?? null,
       }));
 
@@ -154,7 +160,7 @@ export function createTweetStore() {
       const row = db
         .prepare(
           `
-        SELECT id, text, quote, url, approved, createdAt, humanDecision
+        SELECT id, text, quote, url, approved, score, createdAt, humanDecision
         FROM tweets
         WHERE id = @id
       `
@@ -166,6 +172,7 @@ export function createTweetStore() {
             quote: string;
             url: string;
             approved: number;
+            score: number;
             createdAt: string;
             humanDecision: HumanDecision | null;
           }
@@ -178,6 +185,7 @@ export function createTweetStore() {
       return {
         ...row,
         approved: Boolean(row.approved),
+        score: Number(row.score) || 0,
         humanDecision: row.humanDecision ?? null,
       };
     },

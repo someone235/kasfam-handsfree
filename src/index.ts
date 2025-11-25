@@ -51,12 +51,13 @@ async function main() {
 
       log(`Sending question to GPT-5.1...`);
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-      const { quote, approved } = await askTweetDecision(tweet.text);
+      const { quote, approved, score } = await askTweetDecision(tweet.text);
 
       const payload: TweetDecisionInput = {
         ...tweet,
         quote: quote ?? "",
         approved,
+        score,
       };
 
       store.save(payload);

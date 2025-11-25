@@ -138,6 +138,7 @@
           <th>ID</th>
           <th>Tweet</th>
           <th>Quote</th>
+          <th>Score</th>
           <th>URL</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
@@ -261,7 +262,7 @@
       async function fetchTweets() {
         loadingIndicator.style.display = "inline";
         tweetsBody.innerHTML =
-          '<tr><td colspan="8" style="text-align:center">Loading...</td></tr>';
+          '<tr><td colspan="9" style="text-align:center">Loading...</td></tr>';
 
         const params = new URLSearchParams();
         if (filterApproved.value !== "all")
@@ -279,7 +280,7 @@
         try {
           const res = await fetch(`${API_BASE}?${params.toString()}`);
           if (res.status === 401) {
-            tweetsBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color: #ef4444;">Unauthorized: Please check your password.</td></tr>`;
+            tweetsBody.innerHTML = `<tr><td colspan="9" style="text-align:center; color: #ef4444;">Unauthorized: Please check your password.</td></tr>`;
             updatePagination({
               page: paginationState.page,
               pageSize: paginationState.pageSize,
@@ -296,7 +297,7 @@
           updatePagination(payload.pagination);
         } catch (err) {
           console.error(err);
-          tweetsBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
+          tweetsBody.innerHTML = `<tr><td colspan="9" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
         } finally {
           loadingIndicator.style.display = "none";
         }
@@ -318,6 +319,7 @@
             <td>${escapeHtml(tweet.id)}</td>
             <td>${escapeHtml(tweet.text)}</td>
             <td class="quote">${escapeHtml(tweet.quote)}</td>
+            <td class="score-cell">${escapeHtml(tweet.score ?? "")}</td>
             <td><a href="${escapeHtml(
               tweet.url
             )}" target="_blank" rel="noreferrer">link</a></td>
@@ -350,7 +352,7 @@
       }
 
       function showNoTweetsMessage(message = "No tweets found") {
-        tweetsBody.innerHTML = `<tr><td colspan="8" style="text-align:center">${message}</td></tr>`;
+        tweetsBody.innerHTML = `<tr><td colspan="9" style="text-align:center">${message}</td></tr>`;
       }
 
       function rowMatchesCurrentFilters(rowData) {
@@ -490,6 +492,15 @@
           const quoteCell = row.querySelector(".quote");
           if (quoteCell) {
             quoteCell.textContent = updatedTweet.quote ?? "";
+          }
+
+          const scoreCell = row.querySelector(".score-cell");
+          if (scoreCell) {
+            const scoreValue =
+              typeof updatedTweet.score === "number"
+                ? String(updatedTweet.score)
+                : "";
+            scoreCell.textContent = scoreValue;
           }
 
           const statusCell = row.querySelector(".status-icon");

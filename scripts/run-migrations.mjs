@@ -27,7 +27,18 @@ function listMigrationFiles(migrationsDir) {
 
 function applyMigration(db, filePath) {
   const sql = readFileSync(filePath, "utf8");
-  db.exec(sql);
+  try {
+    db.exec(sql);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /duplicate column name/i.test(error.message)
+    ) {
+      console.warn(`Skipping ${path.basename(filePath)}: ${error.message}`);
+      return;
+    }
+    throw error;
+  }
 }
 
 function main() {

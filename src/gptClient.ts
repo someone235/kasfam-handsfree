@@ -14,6 +14,7 @@ function assertApiKey(): string {
 export type AskTweetDecisionResult = {
   quote: string;
   approved: boolean;
+  score: number;
 };
 
 export async function askTweetDecision(
@@ -32,6 +33,8 @@ export async function askTweetDecision(
 
   const quote = response.output_text?.trim() ?? "";
   const approved = !quote.startsWith("Rejected");
+  const scoreMatch = quote.match(/Score: (\d+)/);
+  const score = scoreMatch ? parseInt(scoreMatch[1], 10) : 0;
 
-  return { quote, approved };
+  return { quote, approved, score };
 }
