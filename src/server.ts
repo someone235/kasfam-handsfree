@@ -69,6 +69,43 @@ app.post("/tweets/:id/human-decision", (req, res) => {
   res.json({ success: true });
 });
 
+// process a single tweet through the AI model (for pending tweets)
+app.post("/api/admin/tweets/:id/process", async (req, res) => {
+  const { password } = req.body as { password?: string };
+
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const tweet = store.get(req.params.id);
+  if (!tweet) {
+    return res.status(404).send("Tweet not found.");
+  }
+
+  if (tweet.approved !== null) {
+    return res.status(400).send("Tweet already has a model decision.");
+  }
+
+  try {
+    const { quote, approved, score } = await askTweetDecision(tweet.text);
+
+    store.save({
+      id: tweet.id,
+      text: tweet.text,
+      url: tweet.url,
+      quote: quote ?? "",
+      approved,
+      score,
+    });
+
+    res.json({ success: true, approved, quote, score });
+  } catch (error) {
+    console.error("Error processing tweet:", error);
+    res.status(500).send("Failed to process tweet through AI model.");
+  }
+});
+
+// re-evaluate an already approved tweet
 app.post("/tweets/:id/reeval", async (req, res) => {
   const { password } = (req.body ?? {}) as { password?: string };
 

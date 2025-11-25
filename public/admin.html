@@ -78,6 +78,20 @@
       .status-icon {
         font-size: 1.2em;
       }
+      .process-btn {
+        font-size: 0.75em;
+        padding: 0.15rem 0.4rem;
+        background: #f59e0b;
+        border-color: #d97706;
+        margin-left: 0.5rem;
+      }
+      .process-btn:hover {
+        background: #d97706;
+      }
+      .process-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
       #loading {
         display: none;
         color: #94a3b8;
@@ -313,6 +327,7 @@
         tweetsBody.innerHTML = tweets
           .map((tweet) => {
             const decisionValue = tweet.humanDecision || "";
+            const isPending = tweet.approved === null;
             return `
             <tr data-approved="${
               tweet.approved
@@ -324,7 +339,11 @@
             <td><a href="${escapeHtml(
               tweet.url
             )}" target="_blank" rel="noreferrer">link</a></td>
-            <td class="status-icon">${tweet.approved === null ? "⏳" : tweet.approved ? "✅" : "❌"}</td>
+            <td class="status-icon">
+              ${isPending 
+                ? `<span>⏳</span> <button class="process-btn" data-id="${escapeHtml(tweet.id)}">Process</button>`
+                : tweet.approved ? "✅" : "❌"}
+            </td>
             <td>
                 <select class="decision-select" data-id="${escapeHtml(
                   tweet.id
@@ -342,9 +361,7 @@
             </td>
             <td>${escapeHtml(new Date(tweet.createdAt).toLocaleString())}</td>
             <td>
-              <button type="button" class="reeval-btn" data-id="${escapeHtml(
-                tweet.id
-              )}">Suggest new QT</button>
+              ${!isPending ? `<button type="button" class="reeval-btn" data-id="${escapeHtml(tweet.id)}">Suggest new QT</button>` : ""}
             </td>
           </tr>
         `;
@@ -443,6 +460,55 @@
           select.value = previousValue;
         } finally {
           select.disabled = false;
+        }
+      }
+
+      async function handleProcessButtonClick(button) {
+        const id = button.dataset.id;
+        const password = passwordInput.value;
+
+        if (!password) {
+          alert("Please enter the admin password before processing.");
+          return;
+        }
+
+        if (!id) {
+          alert("Missing tweet ID for processing.");
+          return;
+        }
+
+        button.disabled = true;
+        button.textContent = "Processing...";
+
+        try {
+          const res = await fetch(`/api/admin/tweets/${encodeURIComponent(id)}/process`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ password }),
+          });
+
+          if (res.status === 401) {
+            alert("Unauthorized: Please check your password.");
+            return;
+          }
+
+          if (!res.ok) {
+            const text = await res.text();
+            alert(`Error: ${text}`);
+            return;
+          }
+
+          const result = await res.json();
+          alert(`Tweet processed!\nApproved: ${result.approved}\nScore: ${result.score ?? "(none)"}\nQuote: ${result.quote || "(none)"}`);
+          fetchTweets();
+        } catch (err) {
+          console.error(err);
+          alert("Failed to process tweet");
+        } finally {
+          button.disabled = false;
+          button.textContent = "Process";
         }
       }
 
@@ -607,11 +673,12 @@
       tweetsBody.addEventListener("change", handleDecisionChange);
       tweetsBody.addEventListener("click", (event) => {
         const target = event.target;
-        if (
-          target instanceof HTMLButtonElement &&
-          target.classList.contains("reeval-btn")
-        ) {
+        if (!(target instanceof HTMLButtonElement)) return;
+        
+        if (target.classList.contains("reeval-btn")) {
           handleReevalButtonClick(target);
+        } else if (target.classList.contains("process-btn")) {
+          handleProcessButtonClick(target);
         }
       });
       filterApproved.addEventListener("change", handleFilterChange);
