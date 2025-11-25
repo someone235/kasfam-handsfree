@@ -19,6 +19,10 @@ app.get("/api/tweets", (req, res) => {
   const password = req.query.password as string;
   const authorized = ADMIN_PASSWORD && password == ADMIN_PASSWORD;
 
+  if (password && !authorized) {
+    return res.status(401).send("Unauthorized: Invalid password.");
+  }
+
   const { filters, pagination } = parseFilters(req.query);
   const { tweets, total, page, pageSize } = store.list(filters, pagination);
 
