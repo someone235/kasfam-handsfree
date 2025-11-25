@@ -1,38 +1,5 @@
-import OpenAI from "openai";
-import { prompt as systemPrompt } from "./prompt.js";
+import { askTweetDecision } from "./gptClient.js";
 import { createTweetStore, type TweetDecisionInput } from "./tweetStore.js";
-
-const openAiClient = new OpenAI({ apiKey: assertApiKey() });
-
-function assertApiKey(): string {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) {
-    throw new Error("Missing OPENAI_API_KEY environment variable.");
-  }
-  return key;
-}
-
-async function ask(
-  question: string
-): Promise<{ quote?: string; approved: boolean }> {
-  const response = await openAiClient.responses.create({
-    model: "gpt-5.1",
-    input: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: question },
-    ],
-    reasoning: {
-      effort: "high",
-    },
-  });
-
-  const quote = response.output_text?.trim();
-  const approved = !quote?.startsWith("Rejected");
-  return {
-    quote: quote,
-    approved,
-  };
-}
 
 type Tweet = {
   id: string;
@@ -84,7 +51,7 @@ async function main() {
 
       log(`Sending question to GPT-5.1...`);
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-      const { quote, approved } = await ask(tweet.text);
+      const { quote, approved } = await askTweetDecision(tweet.text);
 
       const payload: TweetDecisionInput = {
         ...tweet,

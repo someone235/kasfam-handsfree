@@ -6,6 +6,7 @@ import {
   type TweetFilters,
   type PaginationOptions,
 } from "./tweetStore.js";
+import { askTweetDecision } from "./gptClient.js";
 
 const PORT = Number(process.env.PORT) || 4000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
@@ -65,6 +66,52 @@ app.post("/tweets/:id/human-decision", (req, res) => {
 
   store.updateHumanDecision(req.params.id, normalized);
   res.json({ success: true });
+});
+
+app.post("/tweets/:id/reeval", async (req, res) => {
+  const { password } = (req.body ?? {}) as { password?: string };
+
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const tweet = store.get(req.params.id);
+  if (!tweet) {
+    return res.status(404).send("Tweet not found.");
+  }
+
+  if (!tweet.approved) {
+    return res.status(400).send("Cannot re-evaluate a rejected tweet.");
+  }
+
+  try {
+    const { quote, approved } = await askTweetDecision(tweet.text);
+
+    if (!approved) {
+      return res.status(500).send("Re-evaluation resulted in rejection");
+    }
+
+    store.save({
+      id: tweet.id,
+      text: tweet.text,
+      url: tweet.url,
+      quote,
+      approved,
+    });
+
+    const updatedTweet = store.get(tweet.id);
+    if (!updatedTweet) {
+      return res
+        .status(500)
+        .send("Failed to load updated tweet after re-evaluation.");
+    }
+
+    res.json(updatedTweet);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown re-evaluation error";
+    res.status(500).send(`Failed to re-evaluate tweet: ${message}`);
+  }
 });
 
 app.listen(PORT, () => {

@@ -150,6 +150,37 @@ export function createTweetStore() {
         pageSize: normalizedPagination.pageSize,
       };
     },
+    get(id: string): TweetRecord | null {
+      const row = db
+        .prepare(
+          `
+        SELECT id, text, quote, url, approved, createdAt, humanDecision
+        FROM tweets
+        WHERE id = @id
+      `
+        )
+        .get({ id }) as
+        | {
+            id: string;
+            text: string;
+            quote: string;
+            url: string;
+            approved: number;
+            createdAt: string;
+            humanDecision: HumanDecision | null;
+          }
+        | undefined;
+
+      if (!row) {
+        return null;
+      }
+
+      return {
+        ...row,
+        approved: Boolean(row.approved),
+        humanDecision: row.humanDecision ?? null,
+      };
+    },
     updateHumanDecision(id: string, decision: HumanDecision | null) {
       db.prepare(
         `

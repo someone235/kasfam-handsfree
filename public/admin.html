@@ -142,6 +142,7 @@
           <th>Model Approved</th>
           <th>Human Decision</th>
           <th>Created</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody id="tweets-body">
@@ -260,7 +261,7 @@
       async function fetchTweets() {
         loadingIndicator.style.display = "inline";
         tweetsBody.innerHTML =
-          '<tr><td colspan="7" style="text-align:center">Loading...</td></tr>';
+          '<tr><td colspan="8" style="text-align:center">Loading...</td></tr>';
 
         const params = new URLSearchParams();
         if (filterApproved.value !== "all")
@@ -278,7 +279,7 @@
         try {
           const res = await fetch(`${API_BASE}?${params.toString()}`);
           if (res.status === 401) {
-            tweetsBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: #ef4444;">Unauthorized: Please check your password.</td></tr>`;
+            tweetsBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color: #ef4444;">Unauthorized: Please check your password.</td></tr>`;
             updatePagination({
               page: paginationState.page,
               pageSize: paginationState.pageSize,
@@ -295,7 +296,7 @@
           updatePagination(payload.pagination);
         } catch (err) {
           console.error(err);
-          tweetsBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
+          tweetsBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
         } finally {
           loadingIndicator.style.display = "none";
         }
@@ -337,6 +338,11 @@
                 </select>
             </td>
             <td>${escapeHtml(new Date(tweet.createdAt).toLocaleString())}</td>
+            <td>
+              <button type="button" class="reeval-btn" data-id="${escapeHtml(
+                tweet.id
+              )}">Re-evaluate</button>
+            </td>
           </tr>
         `;
           })
@@ -344,7 +350,7 @@
       }
 
       function showNoTweetsMessage(message = "No tweets found") {
-        tweetsBody.innerHTML = `<tr><td colspan="7" style="text-align:center">${message}</td></tr>`;
+        tweetsBody.innerHTML = `<tr><td colspan="8" style="text-align:center">${message}</td></tr>`;
       }
 
       function rowMatchesCurrentFilters(rowData) {
@@ -437,6 +443,54 @@
         }
       }
 
+      async function handleReevalButtonClick(button) {
+        const id = button.dataset.id;
+        const password = passwordInput.value;
+
+        if (!password) {
+          alert("Please enter the admin password before re-evaluating.");
+          return;
+        }
+
+        if (!id) {
+          alert("Missing tweet ID for re-evaluation.");
+          return;
+        }
+
+        const originalLabel = button.textContent;
+        button.disabled = true;
+        button.textContent = "Re-evaluating...";
+
+        try {
+          const res = await fetch(`/tweets/${encodeURIComponent(id)}/reeval`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ password }),
+          });
+
+          if (res.status === 401) {
+            alert("Unauthorized: Please check your password.");
+            return;
+          }
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || "Failed to re-evaluate tweet.");
+          }
+
+          await res.json();
+          await fetchTweets();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          alert(`Failed to re-evaluate tweet: ${message}`);
+        } finally {
+          button.disabled = false;
+          button.textContent = originalLabel;
+        }
+      }
+
       function escapeHtml(value) {
         if (!value) return "";
         return String(value)
@@ -523,6 +577,15 @@
       });
 
       tweetsBody.addEventListener("change", handleDecisionChange);
+      tweetsBody.addEventListener("click", (event) => {
+        const target = event.target;
+        if (
+          target instanceof HTMLButtonElement &&
+          target.classList.contains("reeval-btn")
+        ) {
+          handleReevalButtonClick(target);
+        }
+      });
       filterApproved.addEventListener("change", handleFilterChange);
       filterHuman.addEventListener("change", handleFilterChange);
       refreshBtn.addEventListener("click", () => {
