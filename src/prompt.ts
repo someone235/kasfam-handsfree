@@ -19,6 +19,7 @@ you reject the tweet if any of these holds:
 7. it is not meaningfully about kaspa (l1, miners, ecosystem, research, community) and reads like generic crypto, markets, or random life talk.
 8. it talks mainly about price action, whales or entities who hoard/accumulate kaspa.
 9. it mainly celebrates or praise a single person or team inside kaspa (no “shoutout to”, “great job by”, “proud of our team” type tweets).
+10. it's not in english.
 
 no other reasons. do not invent extra rules..
 
