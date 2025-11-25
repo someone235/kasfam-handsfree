@@ -4,6 +4,7 @@ import {
   createTweetStore,
   type HumanDecision,
   type TweetFilters,
+  type PaginationOptions,
 } from "./tweetStore.js";
 
 const PORT = Number(process.env.PORT) || 4000;
@@ -18,14 +19,27 @@ app.get("/api/tweets", (req, res) => {
   const password = req.query.password as string;
   const authorized = ADMIN_PASSWORD && password == ADMIN_PASSWORD;
 
-  const { filters } = parseFilters(req.query);
-  const tweets = store.list(filters).map(t => {
-    return {
-      ...t,
-      quote: authorized || t.approved ? t.quote : "",
-    };
+  const { filters, pagination } = parseFilters(req.query);
+  const { tweets, total, page, pageSize } = store.list(filters, pagination);
+
+  const responseData = tweets.map((t) => ({
+    ...t,
+    quote: authorized || t.approved ? t.quote : "",
+  }));
+
+  const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+
+  res.json({
+    data: responseData,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+    },
   });
-  res.json(tweets);
 });
 
 app.use(express.static(path.join(process.cwd(), "public")));
@@ -64,6 +78,7 @@ process.on("SIGTERM", () => {
 
 type FilterParseResult = {
   filters: TweetFilters;
+  pagination: PaginationOptions;
 };
 
 function parseFilters(query: any): FilterParseResult {
@@ -71,6 +86,9 @@ function parseFilters(query: any): FilterParseResult {
     typeof query.approved === "string" ? query.approved : "all";
   const humanParam =
     typeof query.humanDecision === "string" ? query.humanDecision : "all";
+  const pageParam = typeof query.page === "string" ? query.page : undefined;
+  const pageSizeParam =
+    typeof query.pageSize === "string" ? query.pageSize : undefined;
 
   const filters: TweetFilters = {};
 
@@ -86,7 +104,14 @@ function parseFilters(query: any): FilterParseResult {
     filters.humanDecision = humanParam as TweetFilters["humanDecision"];
   }
 
-  return { filters };
+  const pagination: PaginationOptions = {};
+  const parsedPage = parsePositiveInteger(pageParam);
+  const parsedPageSize = parsePositiveInteger(pageSizeParam);
+
+  if (parsedPage) pagination.page = parsedPage;
+  if (parsedPageSize) pagination.pageSize = parsedPageSize;
+
+  return { filters, pagination };
 }
 
 function normalizeDecision(value?: string): HumanDecision | null {
@@ -94,4 +119,13 @@ function normalizeDecision(value?: string): HumanDecision | null {
     return value;
   }
   return null;
+}
+
+function parsePositiveInteger(value?: string): number | null {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
 }

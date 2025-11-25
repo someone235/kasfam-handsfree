@@ -50,6 +50,10 @@
       button:hover {
         background: #2563eb;
       }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
       .filters {
         display: flex;
         gap: 1rem;
@@ -66,6 +70,20 @@
         display: none;
         color: #94a3b8;
         margin-left: 1rem;
+      }
+      .pagination {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+        margin-top: 1rem;
+      }
+      .pagination select {
+        min-width: auto;
+      }
+      #results-summary {
+        color: #94a3b8;
+        margin-left: auto;
       }
     </style>
   </head>
@@ -111,6 +129,23 @@
       </tbody>
     </table>
 
+    <div class="pagination">
+      <div style="display: flex; gap: 0.5rem; align-items: center">
+        <button id="prev-page" type="button">Previous</button>
+        <span id="page-display">Page 1</span>
+        <button id="next-page" type="button">Next</button>
+      </div>
+      <label>
+        Per page:
+        <select id="page-size">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+        </select>
+      </label>
+      <span id="results-summary">Showing 0 of 0</span>
+    </div>
+
     <script>
       const API_BASE = "/api/tweets";
       const tweetsBody = document.getElementById("tweets-body");
@@ -118,11 +153,39 @@
       const filterHuman = document.getElementById("filter-human");
       const refreshBtn = document.getElementById("refresh-btn");
       const loadingIndicator = document.getElementById("loading");
+      const prevPageBtn = document.getElementById("prev-page");
+      const nextPageBtn = document.getElementById("next-page");
+      const pageDisplay = document.getElementById("page-display");
+      const pageSizeSelect = document.getElementById("page-size");
+      const resultsSummary = document.getElementById("results-summary");
+
+      prevPageBtn.disabled = true;
+      nextPageBtn.disabled = true;
+
+      const paginationState = {
+        page: 1,
+        pageSize: Number(pageSizeSelect.value) || 20,
+        totalPages: 0,
+        total: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      };
 
       function applyFiltersFromUrl() {
         const params = new URLSearchParams(window.location.search);
         setSelectFromParam(filterApproved, params.get("approved"));
         setSelectFromParam(filterHuman, params.get("humanDecision"));
+        const urlPage = parsePositiveInteger(params.get("page"));
+        const urlPageSize = parsePositiveInteger(params.get("pageSize"));
+
+        if (urlPage) {
+          paginationState.page = urlPage;
+        }
+
+        if (urlPageSize && hasPageSizeOption(urlPageSize)) {
+          pageSizeSelect.value = String(urlPageSize);
+          paginationState.pageSize = urlPageSize;
+        }
       }
 
       function setSelectFromParam(selectEl, value) {
@@ -140,6 +203,8 @@
         const params = new URLSearchParams(window.location.search);
         syncFilterParam(params, "approved", filterApproved.value);
         syncFilterParam(params, "humanDecision", filterHuman.value);
+        params.set("page", String(paginationState.page));
+        params.set("pageSize", String(paginationState.pageSize));
         const newSearch = params.toString();
         const newUrl = `${window.location.pathname}${
           newSearch ? `?${newSearch}` : ""
@@ -156,6 +221,7 @@
       }
 
       function handleFilterChange() {
+        paginationState.page = 1;
         updateUrlFromFilters();
         fetchTweets();
       }
@@ -170,12 +236,15 @@
           params.append("approved", filterApproved.value);
         if (filterHuman.value !== "all")
           params.append("humanDecision", filterHuman.value);
+        params.append("page", String(paginationState.page));
+        params.append("pageSize", String(paginationState.pageSize));
 
         try {
           const res = await fetch(`${API_BASE}?${params.toString()}`);
           if (!res.ok) throw new Error("Failed to fetch tweets");
-          const tweets = await res.json();
-          renderTweets(tweets);
+          const payload = await res.json();
+          renderTweets(payload.data || []);
+          updatePagination(payload.pagination);
         } catch (err) {
           console.error(err);
           tweetsBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
@@ -219,6 +288,81 @@
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;");
       }
+
+      function updatePagination(meta = {}) {
+        const page = Number(meta.page) || 1;
+        const pageSize = Number(meta.pageSize) || paginationState.pageSize;
+        const total = Number(meta.total) || 0;
+        const totalPages = Number(meta.totalPages) || 0;
+        const hasNext =
+          typeof meta.hasNextPage === "boolean"
+            ? meta.hasNextPage
+            : totalPages !== 0 && page < totalPages;
+        const hasPrev =
+          typeof meta.hasPreviousPage === "boolean"
+            ? meta.hasPreviousPage
+            : page > 1;
+
+        paginationState.page = page;
+        paginationState.pageSize = pageSize;
+        paginationState.total = total;
+        paginationState.totalPages = totalPages;
+        paginationState.hasNextPage = hasNext;
+        paginationState.hasPreviousPage = hasPrev;
+
+        pageDisplay.textContent =
+          totalPages > 0 ? `Page ${page} of ${totalPages}` : "Page 1 of 1";
+        prevPageBtn.disabled = !hasPrev;
+        nextPageBtn.disabled = !hasNext;
+        pageSizeSelect.value = String(pageSize);
+        resultsSummary.textContent = formatResultsSummary(
+          page,
+          pageSize,
+          total
+        );
+      }
+
+      function formatResultsSummary(page, pageSize, total) {
+        if (total === 0) return "Showing 0 of 0";
+        const start = (page - 1) * pageSize + 1;
+        if (start > total) return `Showing 0 of ${total}`;
+        const end = Math.min(page * pageSize, total);
+        return `Showing ${start}-${end} of ${total}`;
+      }
+
+      function parsePositiveInteger(value) {
+        if (!value) return null;
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) return null;
+        return parsed;
+      }
+
+      function hasPageSizeOption(size) {
+        return Array.from(pageSizeSelect.options).some(
+          (opt) => Number(opt.value) === Number(size)
+        );
+      }
+
+      prevPageBtn.addEventListener("click", () => {
+        if (!paginationState.hasPreviousPage) return;
+        paginationState.page -= 1;
+        updateUrlFromFilters();
+        fetchTweets();
+      });
+
+      nextPageBtn.addEventListener("click", () => {
+        if (!paginationState.hasNextPage) return;
+        paginationState.page += 1;
+        updateUrlFromFilters();
+        fetchTweets();
+      });
+
+      pageSizeSelect.addEventListener("change", () => {
+        paginationState.pageSize = Number(pageSizeSelect.value) || 20;
+        paginationState.page = 1;
+        updateUrlFromFilters();
+        fetchTweets();
+      });
 
       filterApproved.addEventListener("change", handleFilterChange);
       filterHuman.addEventListener("change", handleFilterChange);

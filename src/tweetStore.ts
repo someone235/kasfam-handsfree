@@ -27,6 +27,21 @@ export type TweetFilters = {
   humanDecision?: HumanDecision | "UNSET";
 };
 
+export type PaginationOptions = {
+  page?: number;
+  pageSize?: number;
+};
+
+type NormalizedPagination = {
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+};
+
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
 function resolveDbPath() {
   const inputPath = process.env.SQLITE_DB_PATH || "data/app.db";
   const resolved = path.resolve(inputPath);
@@ -72,7 +87,8 @@ export function createTweetStore() {
         approved: decision.approved ? 1 : 0,
       });
     },
-    list(filters: TweetFilters = {}): TweetRecord[] {
+    list(filters: TweetFilters = {}, pagination?: PaginationOptions) {
+      const normalizedPagination = normalizePagination(pagination);
       const where: string[] = [];
       const params: Record<string, unknown> = {};
 
@@ -91,14 +107,23 @@ export function createTweetStore() {
         where.push("humanDecision IS NULL");
       }
 
-      const sql = `
-        SELECT id, text, quote, url, approved, createdAt, humanDecision
+      const baseQuery = `
         FROM tweets
         ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-        ORDER BY datetime(createdAt) DESC
       `;
 
-      const rows = db.prepare(sql).all(params) as Array<{
+      const sql = `
+        SELECT id, text, quote, url, approved, createdAt, humanDecision
+        ${baseQuery}
+        ORDER BY datetime(createdAt) DESC
+        LIMIT @limit OFFSET @offset
+      `;
+
+      const rows = db.prepare(sql).all({
+        ...params,
+        limit: normalizedPagination.limit,
+        offset: normalizedPagination.offset,
+      }) as Array<{
         id: string;
         text: string;
         quote: string;
@@ -108,11 +133,22 @@ export function createTweetStore() {
         humanDecision: HumanDecision | null;
       }>;
 
-      return rows.map((row) => ({
+      const totalRow = db
+        .prepare(`SELECT COUNT(*) as total ${baseQuery}`)
+        .get(params) as { total: number };
+
+      const tweets = rows.map((row) => ({
         ...row,
         approved: Boolean(row.approved),
         humanDecision: row.humanDecision ?? null,
       }));
+
+      return {
+        tweets,
+        total: totalRow?.total ?? 0,
+        page: normalizedPagination.page,
+        pageSize: normalizedPagination.pageSize,
+      };
     },
     updateHumanDecision(id: string, decision: HumanDecision | null) {
       db.prepare(
@@ -124,13 +160,29 @@ export function createTweetStore() {
       ).run({ id, decision });
     },
     has(id: string): boolean {
-      const row = db
-        .prepare("SELECT 1 FROM tweets WHERE id = @id")
-        .get({ id });
+      const row = db.prepare("SELECT 1 FROM tweets WHERE id = @id").get({ id });
       return !!row;
     },
     close() {
       db.close();
     },
+  };
+}
+
+function normalizePagination(
+  options?: PaginationOptions
+): NormalizedPagination {
+  const page = Math.max(1, Math.floor(options?.page ?? 1));
+  const requestedSize = Math.max(
+    1,
+    Math.floor(options?.pageSize ?? DEFAULT_PAGE_SIZE)
+  );
+  const pageSize = Math.min(requestedSize, MAX_PAGE_SIZE);
+
+  return {
+    page,
+    pageSize,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
   };
 }

@@ -64,6 +64,44 @@ npm run web
 
 Then visit `http://localhost:4000`. Use the filter controls to narrow results by the model's `approved` status or by the `humanDecision` column (Approved, Rejected, or Unset). Each row exposes a dropdown that lets you set the human decision to `APPROVED` or `REJECTED`; changes persist immediately to the SQLite database.
 
+### REST API
+
+The moderation UI consumes the `/api/tweets` endpoint, which you can also call directly. Query parameters:
+
+- `approved`: `true`, `false`, or omit for all results.
+- `humanDecision`: `APPROVED`, `REJECTED`, `UNSET`, or omit.
+- `page` (default `1`): 1-based page number.
+- `pageSize` (default `20`, max `100`): number of rows per page.
+- `password`: required if `ADMIN_PASSWORD` is set and you need access to the protected `quote` text.
+
+The response includes the requested rows plus pagination metadata:
+
+```json
+{
+  "data": [
+    {
+      "id": "...",
+      "text": "...",
+      "quote": "...",
+      "url": "...",
+      "approved": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "humanDecision": "APPROVED"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "total": 123,
+    "totalPages": 7,
+    "hasNextPage": true,
+    "hasPreviousPage": false
+  }
+}
+```
+
+Unauthorized callers still receive the metadata but the `quote` field is blank when the model has not yet approved the tweet.
+
 ### Docker image
 
 You can also run the dashboard in Docker (uses the same SQLite file path inside the container unless overridden):
