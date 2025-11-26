@@ -1,10 +1,5 @@
-To get started, set your OPENAI_API_KEY environment variable, or other required keys for the providers you selected.
+# Evaluation Framework
 
-Next, edit promptfooconfig.yaml.
+## Change test case
 
-Then run:
-```
-promptfoo eval
-```
-
-Afterwards, you can view the results by running `promptfoo view`
+In [`./promptfooconfig.yaml`](./promptfooconfig.yaml), you can modify test cases. [Documentation Reference](https://www.promptfoo.dev/docs/configuration/test-cases/)
