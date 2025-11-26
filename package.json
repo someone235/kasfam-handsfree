@@ -10,7 +10,9 @@
     "dev": "tsx src/index.ts",
     "lint": "tsc --noEmit",
     "migrate": "node scripts/run-migrations.mjs",
-    "web": "tsx src/server.ts"
+    "web": "tsx src/server.ts",
+    "eval": "promptfoo eval -c eval/promptfooconfig.yaml",
+    "eval:view": "promptfoo view"
   },
   "keywords": [],
   "author": "",

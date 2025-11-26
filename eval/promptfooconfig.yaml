@@ -1,0 +1,32 @@
+description: "Prompt Evaluation"
+
+prompts:
+  - "file://prompt.ts"
+
+providers:
+  - "file://provider.ts"
+
+tests:
+  - vars:
+      tweet: |
+        What are vprogs and why is Kaspa rallying (at last) 🧑🏼‍💻
+
+        Overview of Kaspa vProgs
+        Kaspa vProgs, or Verifiable Programs, represent a foundational protocol upgrade for the Kaspa blockchain, a high-throughput proof-of-work (PoW) network utilizing a blockDAG (Directed Acyclic Graph) structure rather than a traditional linear chain. Introduced in mid-2025 through a draft yellow paper by core developer Michael Sutton, vProgs aim to enable native programmability on Kaspa’s Layer 1 (L1) without compromising its core strengths in speed, security, and decentralization. This framework addresses longstanding limitations in blockchain scalability by decoupling computation from on-chain execution, allowing for complex, verifiable applications while preserving the network’s lightweight consensus mechanism.
+        Prior to vProgs, Kaspa primarily functioned as a base layer for payments and simple token standards like KRC-20, lacking robust support for full smart contracts.
+
+        vProgs position Kaspa as a “universal settlement layer” capable of supporting decentralized finance (DeFi), tokenized real-world assets (RWAs), and other programmable use cases, all while maintaining sub-second finality and throughput exceeding 10,000 transactions per second. In every sense out is Ethereum squared. Or Bitcoin on steroids.
+
+        Key Architectural Features
+        vProgs introduce a modular, composable system designed for efficiency and sovereignty. The core elements include:
+
+        ✅ Off-Chain Execution with On-Chain Verification: Complex computations occur off-chain to avoid burdening the L1 with resource-intensive tasks. Once executed, zero-knowledge proofs (ZKPs) are generated to mathematically attest to the results’ validity. These proofs—rather than the full execution data—are periodically anchored to Kaspa’s blockDAG, ensuring integrity without bloating the chain. This “verify-first, execute-off-chain” model aligns with Kaspa’s emphasis on minimalism, where the L1 focuses solely on validation.
+
+        ✅ Self-Sovereign Modules: Each vProg operates as an independent state machine, managing its own accounts, storage, and gas metering. Developers can define custom rules and scopes, promoting modularity akin to “LEGO-inspired” building blocks. This sovereignty prevents interference between programs, while built-in mechanisms like ScopeGas charge precisely for cross-vProg interactions, mitigating externalities such as spam or resource abuse.
+
+        ✅Computation DAG: Mirroring Kaspa’s underlying blockDAG, this dependency graph tracks data flows and execution order across vProgs. It enables parallel processing and precise cost allocation, ensuring that referenced data remains accessible and transactions finalize atomically within the same block.
+
+        ✅ Synchronous Composability: Unlike asynchronous models that introduce delays or non-atomicity, vProgs facilitate real-time interactions between programs. Cross-vProg calls settle instantly on L1, fostering unified liquidity and eliminating the need for bridges or fragmented rollups. This is achieved through dependency scoping, where only relevant data is shared, optimizing parallelism."
+    assert:
+      - type: icontains
+        value: Approved
