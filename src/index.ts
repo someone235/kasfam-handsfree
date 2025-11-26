@@ -1,5 +1,6 @@
 import { askTweetDecision } from "./gptClient.js";
 import { createTweetStore, type TweetDecisionInput } from "./tweetStore.js";
+import "dotenv/config";
 
 type Tweet = {
   id: string;
@@ -18,7 +19,7 @@ async function getKaspaTweets(): Promise<Tweet[]> {
   });
   if (!res.ok) {
     throw new Error(
-      `Failed to fetch kaspa tweets: ${res.status} ${res.statusText}`
+      `Failed to fetch kaspa tweets: ${res.status} ${res.statusText}`,
     );
   }
   const response = await res.json();

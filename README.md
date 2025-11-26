@@ -13,10 +13,10 @@ This tool finds candidates to quote on Kaspa twitter, and suggests the text foll
 npm install
 ```
 
-Set your API key (add this to your shell profile for convenience):
+Copy `.env.example` into `.env` and change `.env` variables for your convenience (`OPENAI_API_KEY` is required):
 
 ```bash
-export OPENAI_API_KEY="sk-your-key"
+cp .env.example .env
 ```
 
 ## Usage
