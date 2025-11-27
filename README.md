@@ -13,10 +13,10 @@ This tool finds candidates to quote on Kaspa twitter, and suggests the text foll
 npm install
 ```
 
-Set your API key (add this to your shell profile for convenience):
+Copy `.env.example` into `.env` and change `.env` variables for your convenience (`OPENAI_API_KEY` is required):
 
 ```bash
-export OPENAI_API_KEY="sk-your-key"
+cp .env.example .env
 ```
 
 ## Usage
@@ -130,3 +130,17 @@ OPENAI_API_KEY=sk-your-key docker compose run processor
 ```
 
 The `web` service exposes `http://localhost:4000` and stays running, while the `processor` service executes the GPT moderation loop defined in `dist/index.js`. Both share the `kaspa-data` volume, so database changes are visible between them.
+
+### Evaluation Framework
+
+Run the test-cases with:
+
+```bash
+npm run eval
+```
+
+Open the web-view after evaluation with:
+
+```bash
+npm run eval:view
+```
