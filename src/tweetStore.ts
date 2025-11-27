@@ -119,7 +119,7 @@ export function createTweetStore() {
       const sql = `
         SELECT id, text, quote, url, approved, score, createdAt, humanDecision
         ${baseQuery}
-        ORDER BY score DESC, datetime(createdAt) DESC
+        ORDER BY datetime(createdAt) DESC
         LIMIT @limit OFFSET @offset
       `;
 
