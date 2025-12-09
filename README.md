@@ -6,17 +6,32 @@ This tool finds candidates to quote on Kaspa twitter, and suggests the text foll
 
 - Node.js 18+
 - An OpenAI API key with access to GPT-5.1
+- (Optional) X API credentials for direct tweet fetching
 
 ## Setup
 
 ```bash
 npm install
+cp .env.example .env
 ```
 
-Set your API key (add this to your shell profile for convenience):
+Edit `.env` with your credentials:
 
 ```bash
-export OPENAI_API_KEY="sk-your-key"
+# Required
+OPENAI_API_KEY=sk-your-key
+
+# Optional: X API OAuth 1.0a credentials (for --source x-api)
+X_API_KEY=your-api-key
+X_API_SECRET=your-api-secret
+X_ACCESS_TOKEN=your-access-token
+X_ACCESS_TOKEN_SECRET=your-access-token-secret
+```
+
+To generate X API access tokens, run the OAuth bootstrap script:
+
+```bash
+npx tsx scripts/x-auth-bootstrap.ts
 ```
 
 ## Usage
@@ -36,21 +51,38 @@ npm start
 
 ### CLI Options
 
-The app pulls all available tweets from the source(kaspa-news) and by default we will send them all to chatgpt for processing. You can limit the number of tweets processed by the LLM using the `--limit` flag, or process a specific tweet (from the API) using `--tweet-id`.
+The app fetches tweets from kaspa.news by default, or directly from X API if configured. Use `--source` to switch sources, `--limit` to cap how many tweets are processed, or `--tweet-id` to process specific tweets.
 
 ```bash
-# process all tweets (default)
+# process all tweets from kaspa.news (default)
 npm run dev
+
+# fetch from X API instead
+npm run dev -- --source x-api
+
+# fetch from both sources (deduplicated)
+npm run dev -- --source both
 
 # process only the latest 50 tweets
 npm run dev -- --limit 50
 
-# process a specific tweet by id
+# process a specific tweet by id (searches kaspa.news by default)
 npm run dev -- --tweet-id 1992657727361868193
 
 # process multiple tweets by id (comma-separated)
 npm run dev -- --tweet-id 1992657727361868193,1992726968492786130,1992637633194016807
+
+# fetch tweet directly from X API by id
+npm run dev -- --tweet-id 1992657727361868193 --source x-api
+
+# try kaspa.news first, fallback to X API if not found
+npm run dev -- --tweet-id 1992657727361868193 --source both
 ```
+
+**Note:** `--limit` only applies to feed fetching, not `--tweet-id`. When using `--tweet-id`:
+- `--source kaspa-news` (default): searches kaspa.news only, errors if not found
+- `--source x-api`: fetches directly from X API by ID
+- `--source both`: tries kaspa.news first, falls back to X API for any missing IDs
 
 The system prompt lives in `src/prompt.ts`. Edit that file if you need a different tone or instruction set. The script prints the model's answer to stdout and falls back to dumping the raw response if no text output is available.
 
@@ -92,12 +124,25 @@ npm run web
 
 Then visit `http://localhost:4000`. Use the filter controls to narrow results by the model's `approved` status or by the `humanDecision` column (Approved, Rejected, or Unset). Each row exposes a dropdown that lets you set the human decision to `APPROVED` or `REJECTED`; changes persist immediately to the SQLite database.
 
+### Gold Examples (Few-shot Learning)
+
+Mark tweets as `GOOD` or `BAD` examples to help calibrate the model. The 5 most recent examples of each type are injected into the GPT prompt as few-shot examples. BAD examples require a rejection reason (e.g., "Rejected: price action focus").
+
+In the admin UI, use the Gold Example dropdown on any tweet. Filter by gold example status using the filter controls.
+
+### Scoring
+
+Tweets receive a percentile-based score (0-100) indicating quality relative to previously evaluated tweets. The model maintains conversation memory to track score distribution and calibrate consistently. Click the Score/Created/Updated column headers in the admin view to sort.
+
 ### REST API
 
 The moderation UI consumes the `/api/tweets` endpoint, which you can also call directly. Query parameters:
 
 - `approved`: `true`, `false`, or omit for all results.
 - `humanDecision`: `APPROVED`, `REJECTED`, `UNSET`, or omit.
+- `goldExample`: `GOOD`, `BAD`, `ANY`, `NONE`, or omit.
+- `orderBy`: `score`, `createdAt`, `updatedAt` (default).
+- `orderDir`: `asc`, `desc` (default).
 - `page` (default `1`): 1-based page number.
 - `pageSize` (default `20`, max `100`): number of rows per page.
 - `password`: required if `ADMIN_PASSWORD` is set and you need access to the protected `quote` text.
@@ -113,8 +158,12 @@ The response includes the requested rows plus pagination metadata:
       "quote": "...",
       "url": "...",
       "approved": true,
+      "score": 75,
       "createdAt": "2024-01-01T00:00:00Z",
-      "humanDecision": "APPROVED"
+      "updatedAt": "2024-01-01T00:00:00Z",
+      "humanDecision": "APPROVED",
+      "goldExampleType": null,
+      "goldExampleCorrection": null
     }
   ],
   "pagination": {
@@ -158,3 +207,7 @@ OPENAI_API_KEY=sk-your-key docker compose run processor
 ```
 
 The `web` service exposes `http://localhost:4000` and stays running, while the `processor` service executes the GPT moderation loop defined in `dist/index.js`. Both share the `kaspa-data` volume, so database changes are visible between them.
+
+## Important Notes
+
+- Conversation memory is shared across CLI and server—avoid running parallel evaluations for consistent calibration
