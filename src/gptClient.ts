@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { prompt as systemPrompt } from "./prompt.js";
+import { prompt as basePrompt, buildPromptWithExamples, type FewShotExample } from "./prompt.js";
 
 const openAiClient = new OpenAI({ apiKey: assertApiKey() });
 
@@ -17,9 +17,18 @@ export type AskTweetDecisionResult = {
   score: number;
 };
 
+export type AskTweetDecisionOptions = {
+  examples?: FewShotExample[];
+};
+
 export async function askTweetDecision(
-  tweetText: string
+  tweetText: string,
+  options: AskTweetDecisionOptions = {}
 ): Promise<AskTweetDecisionResult> {
+  const systemPrompt = options.examples?.length
+    ? buildPromptWithExamples(options.examples)
+    : basePrompt;
+
   const response = await openAiClient.responses.create({
     model: "gpt-5.1",
     input: [
@@ -38,3 +47,5 @@ export async function askTweetDecision(
 
   return { quote, approved, score };
 }
+
+export { type FewShotExample } from "./prompt.js";

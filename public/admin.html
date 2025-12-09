@@ -143,6 +143,106 @@
         color: #94a3b8;
         margin-left: auto;
       }
+      /* Modal styles */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+      }
+      .modal-overlay.active {
+        display: flex;
+      }
+      .modal {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        max-width: 500px;
+        width: 90%;
+      }
+      .modal h3 {
+        margin: 0 0 1rem 0;
+        color: #e2e8f0;
+      }
+      .modal p {
+        margin: 0 0 1rem 0;
+        color: #94a3b8;
+        font-size: 0.9em;
+      }
+      .preset-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+      }
+      .preset-btn {
+        background: #334155;
+        border: 1px solid #475569;
+        padding: 0.5rem 1rem;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        color: #e2e8f0;
+        font-size: 0.9em;
+      }
+      .preset-btn:hover {
+        background: #475569;
+      }
+      .modal-input {
+        width: 100%;
+        padding: 0.5rem;
+        margin-bottom: 1rem;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 0.25rem;
+        color: #e2e8f0;
+      }
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+      }
+      .modal-cancel {
+        background: #475569;
+        border-color: #64748b;
+      }
+      .preset-btn.selected {
+        background: #3b82f6;
+        border-color: #2563eb;
+      }
+      .info-icon {
+        cursor: pointer;
+        color: #64748b;
+        font-size: 0.9em;
+        margin-left: 0.4rem;
+        vertical-align: middle;
+      }
+      .info-icon:hover {
+        color: #94a3b8;
+      }
+      .modal.view-only .preset-btn {
+        cursor: default;
+        opacity: 0.7;
+      }
+      .modal.view-only .preset-btn:not(.selected):hover {
+        background: #334155;
+      }
+      .modal.view-only .modal-input {
+        opacity: 0.7;
+      }
+      .modal.view-only .modal-actions {
+        display: none;
+      }
+      .modal-close-btn {
+        background: #3b82f6;
+        border-color: #2563eb;
+      }
     </style>
   </head>
   <body>
@@ -167,8 +267,19 @@
           <option value="UNSET">Unset</option>
         </select>
       </label>
+      <label>
+        Gold example:
+        <select id="filter-gold">
+          <option value="all">All</option>
+          <option value="GOOD">Good</option>
+          <option value="BAD">Bad</option>
+          <option value="ANY">Any (marked)</option>
+          <option value="NONE">None (unmarked)</option>
+        </select>
+      </label>
       <button id="refresh-btn">Refresh</button>
       <span id="loading">Loading...</span>
+      <span id="gold-counts" style="margin-left: 1rem; color: #94a3b8; font-size: 0.9em;"></span>
     </div>
 
     <div style="margin-top: 1rem; margin-bottom: 1rem">
@@ -191,6 +302,7 @@
         <col /><!-- URL -->
         <col /><!-- Model Approved -->
         <col /><!-- Human Decision -->
+        <col /><!-- Gold Example -->
         <col /><!-- Created -->
         <col /><!-- Updated -->
         <col /><!-- Actions -->
@@ -204,6 +316,7 @@
           <th>URL</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
+          <th>Gold Example</th>
           <th>Created</th>
           <th>Updated</th>
           <th>Actions</th>
@@ -231,14 +344,56 @@
       <span id="results-summary">Showing 0 of 0</span>
     </div>
 
+    <!-- Rejection Reason Modal -->
+    <div id="rejection-modal" class="modal-overlay">
+      <div class="modal">
+        <h3 id="modal-title">Why is this a bad example?</h3>
+        <p id="modal-subtitle">Select a preset reason or write a custom one:</p>
+        <div class="preset-buttons">
+          <button type="button" class="preset-btn" data-reason="Rejected: low signal filler">Low signal / filler</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: price action focus">Price action</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: not about Kaspa">Not about Kaspa</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: L2 promotion">L2 promotion</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: praises individual">Praises individual</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: divisive/drama">Divisive / drama</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: generic hype">Generic hype</button>
+        </div>
+        <input type="text" id="custom-reason" class="modal-input" placeholder="Or type a custom reason: Rejected: ..." />
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel" class="modal-cancel">Cancel</button>
+          <button type="button" id="modal-submit">Save as BAD example</button>
+        </div>
+        <div class="modal-view-actions" style="display: none; justify-content: flex-end;">
+          <button type="button" id="modal-close" class="modal-close-btn">Close</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       const API_BASE = "/api/admin/tweets";
       const tweetsBody = document.getElementById("tweets-body");
       const filterApproved = document.getElementById("filter-approved");
       const filterHuman = document.getElementById("filter-human");
+      const filterGold = document.getElementById("filter-gold");
       const refreshBtn = document.getElementById("refresh-btn");
       const loadingIndicator = document.getElementById("loading");
+      const goldCountsDisplay = document.getElementById("gold-counts");
       const passwordInput = document.getElementById("admin-password");
+
+      // Modal elements
+      const rejectionModal = document.getElementById("rejection-modal");
+      const modalContent = rejectionModal.querySelector(".modal");
+      const modalTitle = document.getElementById("modal-title");
+      const modalSubtitle = document.getElementById("modal-subtitle");
+      const customReasonInput = document.getElementById("custom-reason");
+      const modalCancelBtn = document.getElementById("modal-cancel");
+      const modalSubmitBtn = document.getElementById("modal-submit");
+      const modalCloseBtn = document.getElementById("modal-close");
+      const modalActions = rejectionModal.querySelector(".modal-actions");
+      const modalViewActions = rejectionModal.querySelector(".modal-view-actions");
+      const presetBtns = rejectionModal.querySelectorAll(".preset-btn");
+      let pendingGoldExampleSelect = null; // Track which select triggered the modal
+      let isViewMode = false;
       const prevPageBtn = document.getElementById("prev-page");
       const nextPageBtn = document.getElementById("next-page");
       const pageDisplay = document.getElementById("page-display");
@@ -261,6 +416,7 @@
         const params = new URLSearchParams(window.location.search);
         setSelectFromParam(filterApproved, params.get("approved"));
         setSelectFromParam(filterHuman, params.get("humanDecision"));
+        setSelectFromParam(filterGold, params.get("goldExample"));
         const urlPage = parsePositiveInteger(params.get("page"));
         const urlPageSize = parsePositiveInteger(params.get("pageSize"));
 
@@ -289,6 +445,7 @@
         const params = new URLSearchParams(window.location.search);
         syncFilterParam(params, "approved", filterApproved.value);
         syncFilterParam(params, "humanDecision", filterHuman.value);
+        syncFilterParam(params, "goldExample", filterGold.value);
         params.set("page", String(paginationState.page));
         params.set("pageSize", String(paginationState.pageSize));
         const newSearch = params.toString();
@@ -320,18 +477,21 @@
 
       passwordInput.addEventListener("input", (e) => {
         localStorage.setItem("kasfam_admin_password", e.target.value);
+        fetchGoldCounts();
       });
 
       async function fetchTweets() {
         loadingIndicator.style.display = "inline";
         tweetsBody.innerHTML =
-          '<tr><td colspan="10" style="text-align:center">Loading...</td></tr>';
+          '<tr><td colspan="11" style="text-align:center">Loading...</td></tr>';
 
         const params = new URLSearchParams();
         if (filterApproved.value !== "all")
           params.append("approved", filterApproved.value);
         if (filterHuman.value !== "all")
           params.append("humanDecision", filterHuman.value);
+        if (filterGold.value !== "all")
+          params.append("goldExample", filterGold.value);
         params.append("page", String(paginationState.page));
         params.append("pageSize", String(paginationState.pageSize));
 
@@ -343,7 +503,7 @@
         try {
           const res = await fetch(`${API_BASE}?${params.toString()}`);
           if (res.status === 401) {
-            tweetsBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color: #ef4444;">Unauthorized: Please check your password.</td></tr>`;
+            tweetsBody.innerHTML = `<tr><td colspan="11" style="text-align:center; color: #ef4444;">Unauthorized: Please check your password.</td></tr>`;
             updatePagination({
               page: paginationState.page,
               pageSize: paginationState.pageSize,
@@ -360,7 +520,7 @@
           updatePagination(payload.pagination);
         } catch (err) {
           console.error(err);
-          tweetsBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
+          tweetsBody.innerHTML = `<tr><td colspan="11" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
         } finally {
           loadingIndicator.style.display = "none";
         }
@@ -379,7 +539,7 @@
             return `
             <tr data-approved="${
               tweet.approved
-            }" data-human-decision="${escapeHtml(decisionValue || "UNSET")}">
+            }" data-human-decision="${escapeHtml(decisionValue || "UNSET")}" data-gold-example-type="${escapeHtml(tweet.goldExampleType || "")}">
             <td>${escapeHtml(tweet.id)}</td>
             <td>
               <div class="cell-content" data-content-type="tweet">${escapeHtml(tweet.text)}</div>
@@ -411,6 +571,15 @@
                   }>REJECTED</option>
                 </select>
             </td>
+            <td style="white-space: nowrap;">
+                <select class="gold-example-select" data-id="${escapeHtml(
+                  tweet.id
+                )}" data-prev-value="${escapeHtml(tweet.goldExampleType || "")}">
+                  <option value="" ${!tweet.goldExampleType ? "selected" : ""}>None</option>
+                  <option value="GOOD" ${tweet.goldExampleType === "GOOD" ? "selected" : ""}>GOOD</option>
+                  <option value="BAD" ${tweet.goldExampleType === "BAD" ? "selected" : ""}>BAD</option>
+                </select>${tweet.goldExampleCorrection ? `<span class="info-icon" data-correction="${escapeHtml(tweet.goldExampleCorrection)}">ⓘ</span>` : ""}
+            </td>
             <td>${escapeHtml(new Date(tweet.createdAt).toLocaleString())}</td>
             <td>${tweet.updatedAt ? escapeHtml(new Date(tweet.updatedAt).toLocaleString()) : "-"}</td>
             <td>
@@ -425,7 +594,7 @@
       }
 
       function showNoTweetsMessage(message = "No tweets found") {
-        tweetsBody.innerHTML = `<tr><td colspan="10" style="text-align:center">${message}</td></tr>`;
+        tweetsBody.innerHTML = `<tr><td colspan="11" style="text-align:center">${message}</td></tr>`;
       }
 
       function rowMatchesCurrentFilters(rowData) {
@@ -447,6 +616,15 @@
           }
         }
 
+        // Check gold example filter
+        if (filterGold.value !== "all") {
+          const currentGold = rowData.goldExampleType || "";
+          if (filterGold.value === "NONE" && currentGold !== "") return false;
+          if (filterGold.value === "ANY" && currentGold === "") return false;
+          if (filterGold.value === "GOOD" && currentGold !== "GOOD") return false;
+          if (filterGold.value === "BAD" && currentGold !== "BAD") return false;
+        }
+
         return true;
       }
 
@@ -458,6 +636,82 @@
         if (!decision) return;
 
         saveDecision(select, decision);
+      }
+
+      function handleGoldExampleChange(event) {
+        const select = event.target;
+        if (!select.classList.contains("gold-example-select")) return;
+
+        const type = select.value || null;
+
+        if (type === "BAD") {
+          // Show the modal to get rejection reason
+          pendingGoldExampleSelect = select;
+          customReasonInput.value = "";
+          rejectionModal.classList.add("active");
+        } else {
+          // For GOOD or None, save directly without correction
+          saveGoldExample(select, type, null);
+        }
+      }
+
+      async function saveGoldExample(select, type, correction) {
+        const id = select.dataset.id;
+        const password = passwordInput.value;
+        const previousValue = select.dataset.prevValue || "";
+
+        if (!password) {
+          alert("Please enter the admin password before saving.");
+          select.value = previousValue;
+          return;
+        }
+
+        select.disabled = true;
+
+        try {
+          const body = { type, password };
+          if (correction) {
+            body.correction = correction;
+          }
+
+          const res = await fetch(
+            `/api/admin/tweets/${encodeURIComponent(id)}/gold-example`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            }
+          );
+
+          if (!res.ok) {
+            const text = await res.text();
+            alert(`Error: ${text}`);
+            select.value = previousValue;
+            return;
+          }
+
+          select.dataset.prevValue = type || "";
+
+          // Update row dataset and check if it still matches filters
+          const row = select.closest("tr");
+          if (row) {
+            row.dataset.goldExampleType = type || "";
+            if (!rowMatchesCurrentFilters(row.dataset)) {
+              row.remove();
+              if (!tweetsBody.querySelector("tr")) {
+                showNoTweetsMessage("No tweets match current filters");
+              }
+            }
+          }
+
+          fetchGoldCounts();
+        } catch (err) {
+          console.error(err);
+          alert("Failed to save gold example status");
+          select.value = previousValue;
+        } finally {
+          select.disabled = false;
+        }
       }
 
       async function saveDecision(select, decision) {
@@ -726,6 +980,7 @@
       });
 
       tweetsBody.addEventListener("change", handleDecisionChange);
+      tweetsBody.addEventListener("change", handleGoldExampleChange);
       tweetsBody.addEventListener("click", (event) => {
         const target = event.target;
         if (!(target instanceof HTMLButtonElement) && !target.classList.contains('expand-toggle')) return;
@@ -740,6 +995,7 @@
       });
       filterApproved.addEventListener("change", handleFilterChange);
       filterHuman.addEventListener("change", handleFilterChange);
+      filterGold.addEventListener("change", handleFilterChange);
       refreshBtn.addEventListener("click", () => {
         updateUrlFromFilters();
         fetchTweets();
@@ -773,9 +1029,167 @@
         }
       }
 
+      async function fetchGoldCounts() {
+        const password = passwordInput.value;
+        const url = password
+          ? `/api/admin/gold-examples/counts?password=${encodeURIComponent(password)}`
+          : `/api/gold-examples/counts`;
+
+        try {
+          const res = await fetch(url);
+          if (!res.ok) {
+            goldCountsDisplay.textContent = "";
+            return;
+          }
+          const data = await res.json();
+          const goodCount = data.good || 0;
+          const badCount = data.bad || 0;
+          const maxPerType = data.maxPerType || 5;
+          goldCountsDisplay.textContent = `Gold: ${badCount}/${maxPerType} BAD, ${goodCount}/${maxPerType} GOOD (most recent ${maxPerType} used)`;
+        } catch (err) {
+          console.error("Failed to fetch gold counts:", err);
+          goldCountsDisplay.textContent = "";
+        }
+      }
+
+      // Modal event handlers
+      function closeModal() {
+        rejectionModal.classList.remove("active");
+        if (pendingGoldExampleSelect && !isViewMode) {
+          // Revert to previous value if modal is cancelled
+          pendingGoldExampleSelect.value = pendingGoldExampleSelect.dataset.prevValue || "";
+        }
+        pendingGoldExampleSelect = null;
+        customReasonInput.value = "";
+        // Reset view mode state
+        isViewMode = false;
+        modalContent.classList.remove("view-only");
+        modalTitle.textContent = "Why is this a bad example?";
+        modalSubtitle.textContent = "Select a preset reason or write a custom one:";
+        modalActions.style.display = "flex";
+        modalViewActions.style.display = "none";
+        customReasonInput.readOnly = false;
+        presetBtns.forEach(btn => btn.classList.remove("selected"));
+      }
+
+      function openViewModal(correction) {
+        isViewMode = true;
+        modalContent.classList.add("view-only");
+        modalTitle.textContent = "Bad Example Reason";
+        modalSubtitle.textContent = "This tweet was marked as a bad example because:";
+        modalActions.style.display = "none";
+        modalViewActions.style.display = "flex";
+        customReasonInput.readOnly = true;
+
+        // Check if this matches a preset and highlight it
+        let matchedPreset = false;
+        presetBtns.forEach(btn => {
+          btn.classList.remove("selected");
+          if (btn.dataset.reason === correction) {
+            btn.classList.add("selected");
+            matchedPreset = true;
+          }
+        });
+
+        // If it's a custom reason, show it in the input
+        if (!matchedPreset) {
+          customReasonInput.value = correction;
+        } else {
+          customReasonInput.value = "";
+        }
+
+        rejectionModal.classList.add("active");
+      }
+
+      modalCancelBtn.addEventListener("click", closeModal);
+      modalCloseBtn.addEventListener("click", closeModal);
+
+      // Close modal when clicking outside
+      rejectionModal.addEventListener("click", (e) => {
+        if (e.target === rejectionModal) {
+          closeModal();
+        }
+      });
+
+      // Handle preset button clicks
+      presetBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (isViewMode) return; // Do nothing in view mode
+          const reason = btn.dataset.reason;
+          if (pendingGoldExampleSelect && reason) {
+            saveGoldExample(pendingGoldExampleSelect, "BAD", reason);
+            rejectionModal.classList.remove("active");
+            pendingGoldExampleSelect = null;
+            customReasonInput.value = "";
+          }
+        });
+      });
+
+      // Handle info icon clicks - open in edit mode to allow changing the reason
+      tweetsBody.addEventListener("click", (e) => {
+        const infoIcon = e.target.closest(".info-icon");
+        if (infoIcon) {
+          const correction = infoIcon.dataset.correction;
+          // Find the associated select element (previous sibling)
+          const select = infoIcon.previousElementSibling;
+          if (select && select.classList.contains("gold-example-select") && correction) {
+            openEditModal(select, correction);
+          }
+        }
+      });
+
+      // Open modal in edit mode with pre-populated value
+      function openEditModal(selectEl, currentCorrection) {
+        pendingGoldExampleSelect = selectEl;
+        isViewMode = false;
+        modalContent.classList.remove("view-only");
+        modalTitle.textContent = "Edit bad example reason";
+        modalSubtitle.textContent = "Select a different reason or update the custom one:";
+        modalActions.style.display = "flex";
+        modalViewActions.style.display = "none";
+        customReasonInput.readOnly = false;
+
+        // Check if this matches a preset and highlight it
+        let matchedPreset = false;
+        presetBtns.forEach(btn => {
+          btn.classList.remove("selected");
+          if (btn.dataset.reason === currentCorrection) {
+            btn.classList.add("selected");
+            matchedPreset = true;
+          }
+        });
+
+        // If it's a custom reason, show it in the input
+        if (!matchedPreset) {
+          customReasonInput.value = currentCorrection;
+        } else {
+          customReasonInput.value = "";
+        }
+
+        rejectionModal.classList.add("active");
+      }
+
+      // Handle custom submit
+      modalSubmitBtn.addEventListener("click", () => {
+        const customReason = customReasonInput.value.trim();
+        if (!customReason) {
+          alert("Please select a preset or enter a custom reason.");
+          return;
+        }
+        // Ensure it starts with "Rejected:" for consistency
+        const reason = customReason.startsWith("Rejected:") ? customReason : `Rejected: ${customReason}`;
+        if (pendingGoldExampleSelect) {
+          saveGoldExample(pendingGoldExampleSelect, "BAD", reason);
+          rejectionModal.classList.remove("active");
+          pendingGoldExampleSelect = null;
+          customReasonInput.value = "";
+        }
+      });
+
       // initial load
       applyFiltersFromUrl();
       fetchTweets();
+      fetchGoldCounts();
 
       // update expand toggles after tweets are loaded
       setTimeout(updateExpandToggles, 100);
