@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { askTweetDecision } from "./gptClient.js";
+import { askTweetDecision, type FewShotExample } from "./gptClient.js";
 import { createTweetStore, type TweetDecisionInput, type TweetRawInput } from "./tweetStore.js";
 import { createXClient } from "./xClient.js";
 
@@ -290,6 +290,18 @@ async function main() {
     }
     log(`Saved ${tweets.length} tweets to database`);
 
+    // load gold examples for few-shot learning
+    const goldExamples = store.getGoldExamples();
+    const fewShotExamples: FewShotExample[] = goldExamples.map(ex => ({
+      tweetText: ex.text,
+      response: ex.quote,
+      correction: ex.goldExampleCorrection ?? undefined,
+      type: ex.goldExampleType!,
+    }));
+    if (fewShotExamples.length > 0) {
+      log(`Loaded ${fewShotExamples.length} gold examples for few-shot learning`);
+    }
+
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i];
       log(`Reading tweet ${i + 1} of ${tweets.length}`);
@@ -306,7 +318,9 @@ async function main() {
 
       log(`Sending question to GPT-5.1...`);
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-      const { quote, approved, score } = await askTweetDecision(tweet.text);
+      const { quote, approved, score } = await askTweetDecision(tweet.text, {
+        examples: fewShotExamples,
+      });
 
       const payload: TweetDecisionInput = {
         ...tweet,

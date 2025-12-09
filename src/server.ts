@@ -4,6 +4,7 @@ import path from "path";
 import {
   createTweetStore,
   type HumanDecision,
+  type GoldExampleType,
   type TweetFilters,
   type PaginationOptions,
 } from "./tweetStore.js";
@@ -186,6 +187,90 @@ app.post("/tweets/:id/reeval", async (req, res) => {
   }
 });
 
+// Set gold example status for a tweet
+app.post("/api/admin/tweets/:id/gold-example", (req, res) => {
+  const { type, password, correction } = req.body as {
+    type?: string;
+    password?: string;
+    correction?: string;
+  };
+
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const normalized = normalizeGoldExampleType(type);
+  if (type && !normalized) {
+    return res.status(400).send("Invalid type. Use GOOD, BAD, or omit to clear.");
+  }
+
+  // BAD examples require a correction (the rejection reason)
+  if (normalized === "BAD" && !correction) {
+    return res.status(400).send("BAD examples require a correction (rejection reason).");
+  }
+
+  const tweet = store.get(req.params.id);
+  if (!tweet) {
+    return res.status(404).send("Tweet not found.");
+  }
+
+  // Only store correction for BAD examples, clear it otherwise
+  const correctionToStore = normalized === "BAD" ? correction : null;
+  store.setGoldExample(req.params.id, normalized, correctionToStore);
+  res.json({ success: true, goldExampleType: normalized, goldExampleCorrection: correctionToStore });
+});
+
+// Get gold example counts (public)
+app.get("/api/gold-examples/counts", (_req, res) => {
+  const goodExamples = store.getGoldExamples("GOOD");
+  const badExamples = store.getGoldExamples("BAD");
+
+  res.json({
+    good: goodExamples.length,
+    bad: badExamples.length,
+    maxPerType: 5,
+    oldestGood: goodExamples.length > 0 ? goodExamples[goodExamples.length - 1]?.updatedAt : null,
+    oldestBad: badExamples.length > 0 ? badExamples[badExamples.length - 1]?.updatedAt : null,
+  });
+});
+
+// Get gold example counts (admin - same as public for now)
+app.get("/api/admin/gold-examples/counts", (req, res) => {
+  const password = req.query.password as string;
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const goodExamples = store.getGoldExamples("GOOD");
+  const badExamples = store.getGoldExamples("BAD");
+
+  res.json({
+    good: goodExamples.length,
+    bad: badExamples.length,
+    maxPerType: 5,
+    oldestGood: goodExamples.length > 0 ? goodExamples[goodExamples.length - 1]?.updatedAt : null,
+    oldestBad: badExamples.length > 0 ? badExamples[badExamples.length - 1]?.updatedAt : null,
+  });
+});
+
+// Get all gold examples
+app.get("/api/admin/gold-examples", (req, res) => {
+  const password = req.query.password as string;
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const type = req.query.type as string | undefined;
+  const normalized = type ? normalizeGoldExampleType(type) : undefined;
+
+  if (type && !normalized) {
+    return res.status(400).send("Invalid type. Use GOOD or BAD.");
+  }
+
+  const examples = store.getGoldExamples(normalized ?? undefined);
+  res.json({ data: examples });
+});
+
 app.listen(PORT, () => {
   console.log(`Tweet moderation dashboard running on http://localhost:${PORT}`);
 });
@@ -209,6 +294,8 @@ function parseFilters(query: any): FilterParseResult {
     typeof query.approved === "string" ? query.approved : "all";
   const humanParam =
     typeof query.humanDecision === "string" ? query.humanDecision : "all";
+  const goldParam =
+    typeof query.goldExample === "string" ? query.goldExample : "all";
   const pageParam = typeof query.page === "string" ? query.page : undefined;
   const pageSizeParam =
     typeof query.pageSize === "string" ? query.pageSize : undefined;
@@ -229,6 +316,14 @@ function parseFilters(query: any): FilterParseResult {
     filters.humanDecision = humanParam as TweetFilters["humanDecision"];
   }
 
+  if (goldParam === "GOOD" || goldParam === "BAD") {
+    filters.goldExampleType = goldParam as TweetFilters["goldExampleType"];
+  } else if (goldParam === "ANY") {
+    filters.hasGoldExample = true;
+  } else if (goldParam === "NONE") {
+    filters.hasGoldExample = false;
+  }
+
   const pagination: PaginationOptions = {};
   const parsedPage = parsePositiveInteger(pageParam);
   const parsedPageSize = parsePositiveInteger(pageSizeParam);
@@ -241,6 +336,13 @@ function parseFilters(query: any): FilterParseResult {
 
 function normalizeDecision(value?: string): HumanDecision | null {
   if (value === "APPROVED" || value === "REJECTED") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeGoldExampleType(value?: string): GoldExampleType | null {
+  if (value === "GOOD" || value === "BAD") {
     return value;
   }
   return null;

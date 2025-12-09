@@ -104,6 +104,85 @@
         color: #94a3b8;
         margin-left: auto;
       }
+      /* Modal styles */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+      }
+      .modal-overlay.active {
+        display: flex;
+      }
+      .modal {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        max-width: 500px;
+        width: 90%;
+      }
+      .modal h3 {
+        margin: 0 0 1rem 0;
+        color: #e2e8f0;
+      }
+      .modal p {
+        margin: 0 0 1rem 0;
+        color: #94a3b8;
+        font-size: 0.9em;
+      }
+      .preset-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+      }
+      .preset-btn {
+        background: #334155;
+        border: 1px solid #475569;
+        padding: 0.5rem 1rem;
+        border-radius: 0.25rem;
+        cursor: default;
+        color: #e2e8f0;
+        font-size: 0.9em;
+        opacity: 0.7;
+      }
+      .preset-btn.selected {
+        background: #3b82f6;
+        border-color: #2563eb;
+        opacity: 1;
+      }
+      .modal-input {
+        width: 100%;
+        padding: 0.5rem;
+        margin-bottom: 1rem;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 0.25rem;
+        color: #e2e8f0;
+        opacity: 0.7;
+      }
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+      }
+      .info-icon {
+        cursor: pointer;
+        color: #64748b;
+        font-size: 0.9em;
+        margin-left: 0.4rem;
+        vertical-align: middle;
+      }
+      .info-icon:hover {
+        color: #94a3b8;
+      }
     </style>
   </head>
   <body>
@@ -127,8 +206,19 @@
           <option value="UNSET">Unset</option>
         </select>
       </label>
+      <label>
+        Gold example:
+        <select id="filter-gold">
+          <option value="all">All</option>
+          <option value="GOOD">Good</option>
+          <option value="BAD">Bad</option>
+          <option value="ANY">Any (marked)</option>
+          <option value="NONE">None (unmarked)</option>
+        </select>
+      </label>
       <button id="refresh-btn">Refresh</button>
       <span id="loading">Loading...</span>
+      <span id="gold-counts" style="margin-left: 1rem; color: #94a3b8; font-size: 0.9em;"></span>
     </div>
 
     <table>
@@ -139,6 +229,7 @@
         <col /><!-- URL -->
         <col /><!-- Model Approved -->
         <col /><!-- Human Decision -->
+        <col /><!-- Gold Example -->
         <col /><!-- Date -->
       </colgroup>
       <thead>
@@ -149,6 +240,7 @@
           <th>URL</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
+          <th>Gold Example</th>
           <th>Date</th>
         </tr>
       </thead>
@@ -174,13 +266,42 @@
       <span id="results-summary">Showing 0 of 0</span>
     </div>
 
+    <!-- View Reason Modal (read-only) -->
+    <div id="reason-modal" class="modal-overlay">
+      <div class="modal">
+        <h3>Bad Example Reason</h3>
+        <p>This tweet was marked as a bad example because:</p>
+        <div class="preset-buttons">
+          <button type="button" class="preset-btn" data-reason="Rejected: low signal filler">Low signal / filler</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: price action focus">Price action</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: not about Kaspa">Not about Kaspa</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: L2 promotion">L2 promotion</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: praises individual">Praises individual</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: divisive/drama">Divisive / drama</button>
+          <button type="button" class="preset-btn" data-reason="Rejected: generic hype">Generic hype</button>
+        </div>
+        <input type="text" id="reason-display" class="modal-input" readonly />
+        <div class="modal-actions">
+          <button type="button" id="modal-close">Close</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       const API_BASE = "/api/tweets";
       const tweetsBody = document.getElementById("tweets-body");
       const filterApproved = document.getElementById("filter-approved");
       const filterHuman = document.getElementById("filter-human");
+      const filterGold = document.getElementById("filter-gold");
       const refreshBtn = document.getElementById("refresh-btn");
       const loadingIndicator = document.getElementById("loading");
+      const goldCountsDisplay = document.getElementById("gold-counts");
+
+      // Modal elements
+      const reasonModal = document.getElementById("reason-modal");
+      const reasonDisplay = document.getElementById("reason-display");
+      const modalCloseBtn = document.getElementById("modal-close");
+      const presetBtns = reasonModal.querySelectorAll(".preset-btn");
       const prevPageBtn = document.getElementById("prev-page");
       const nextPageBtn = document.getElementById("next-page");
       const pageDisplay = document.getElementById("page-display");
@@ -203,6 +324,7 @@
         const params = new URLSearchParams(window.location.search);
         setSelectFromParam(filterApproved, params.get("approved"));
         setSelectFromParam(filterHuman, params.get("humanDecision"));
+        setSelectFromParam(filterGold, params.get("goldExample"));
         const urlPage = parsePositiveInteger(params.get("page"));
         const urlPageSize = parsePositiveInteger(params.get("pageSize"));
 
@@ -231,6 +353,7 @@
         const params = new URLSearchParams(window.location.search);
         syncFilterParam(params, "approved", filterApproved.value);
         syncFilterParam(params, "humanDecision", filterHuman.value);
+        syncFilterParam(params, "goldExample", filterGold.value);
         params.set("page", String(paginationState.page));
         params.set("pageSize", String(paginationState.pageSize));
         const newSearch = params.toString();
@@ -257,13 +380,15 @@
       async function fetchTweets() {
         loadingIndicator.style.display = "inline";
         tweetsBody.innerHTML =
-          '<tr><td colspan="7" style="text-align:center">Loading...</td></tr>';
+          '<tr><td colspan="8" style="text-align:center">Loading...</td></tr>';
 
         const params = new URLSearchParams();
         if (filterApproved.value !== "all")
           params.append("approved", filterApproved.value);
         if (filterHuman.value !== "all")
           params.append("humanDecision", filterHuman.value);
+        if (filterGold.value !== "all")
+          params.append("goldExample", filterGold.value);
         params.append("page", String(paginationState.page));
         params.append("pageSize", String(paginationState.pageSize));
 
@@ -275,7 +400,7 @@
           updatePagination(payload.pagination);
         } catch (err) {
           console.error(err);
-          tweetsBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
+          tweetsBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
         } finally {
           loadingIndicator.style.display = "none";
         }
@@ -284,7 +409,7 @@
       function renderTweets(tweets) {
         if (tweets.length === 0) {
           tweetsBody.innerHTML =
-            '<tr><td colspan="7" style="text-align:center">No tweets found</td></tr>';
+            '<tr><td colspan="8" style="text-align:center">No tweets found</td></tr>';
           return;
         }
 
@@ -306,6 +431,7 @@
             )}" target="_blank" rel="noreferrer">link</a></td>
             <td class="status-icon">${tweet.approved ? "✅" : "❌"}</td>
             <td>${tweet.humanDecision || "UNSET"}</td>
+            <td>${tweet.goldExampleType || "-"}${tweet.goldExampleCorrection ? `<span class="info-icon" data-correction="${escapeHtml(tweet.goldExampleCorrection)}">ⓘ</span>` : ""}</td>
             <td>${escapeHtml(new Date(tweet.updatedAt || tweet.createdAt).toLocaleString())}</td>
           </tr>
         `;
@@ -407,10 +533,29 @@
 
       filterApproved.addEventListener("change", handleFilterChange);
       filterHuman.addEventListener("change", handleFilterChange);
+      filterGold.addEventListener("change", handleFilterChange);
       refreshBtn.addEventListener("click", () => {
         updateUrlFromFilters();
         fetchTweets();
       });
+
+      async function fetchGoldCounts() {
+        try {
+          const res = await fetch("/api/gold-examples/counts");
+          if (!res.ok) {
+            goldCountsDisplay.textContent = "";
+            return;
+          }
+          const data = await res.json();
+          const goodCount = data.good || 0;
+          const badCount = data.bad || 0;
+          const maxPerType = data.maxPerType || 5;
+          goldCountsDisplay.textContent = `Gold: ${badCount}/${maxPerType} BAD, ${goodCount}/${maxPerType} GOOD (most recent ${maxPerType} used)`;
+        } catch (err) {
+          console.error("Failed to fetch gold counts:", err);
+          goldCountsDisplay.textContent = "";
+        }
+      }
 
       // cell expand/collapse functionality
       function updateExpandToggles() {
@@ -440,9 +585,58 @@
         }
       }
 
+      // Modal event handlers (view-only for public)
+      function openViewModal(correction) {
+        // Check if this matches a preset and highlight it
+        let matchedPreset = false;
+        presetBtns.forEach(btn => {
+          btn.classList.remove("selected");
+          if (btn.dataset.reason === correction) {
+            btn.classList.add("selected");
+            matchedPreset = true;
+          }
+        });
+
+        // If it's a custom reason, show it in the input
+        if (!matchedPreset) {
+          reasonDisplay.value = correction;
+        } else {
+          reasonDisplay.value = "";
+        }
+
+        reasonModal.classList.add("active");
+      }
+
+      function closeModal() {
+        reasonModal.classList.remove("active");
+        reasonDisplay.value = "";
+        presetBtns.forEach(btn => btn.classList.remove("selected"));
+      }
+
+      modalCloseBtn.addEventListener("click", closeModal);
+
+      // Close modal when clicking outside
+      reasonModal.addEventListener("click", (e) => {
+        if (e.target === reasonModal) {
+          closeModal();
+        }
+      });
+
+      // Handle info icon clicks (event delegation)
+      tweetsBody.addEventListener("click", (e) => {
+        const infoIcon = e.target.closest(".info-icon");
+        if (infoIcon) {
+          const correction = infoIcon.dataset.correction;
+          if (correction) {
+            openViewModal(correction);
+          }
+        }
+      });
+
       // initial load
       applyFiltersFromUrl();
       fetchTweets();
+      fetchGoldCounts();
 
       // update expand toggles after tweets are loaded
       setTimeout(updateExpandToggles, 100);
