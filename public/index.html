@@ -54,6 +54,13 @@
         cursor: not-allowed;
         opacity: 0.5;
       }
+      .btn-secondary {
+        background: #333d4a;
+        border-color: #64748b;
+      }
+      .btn-secondary:hover {
+        background: #26303e;
+      }
       .filters {
         display: flex;
         gap: 1rem;
@@ -73,6 +80,9 @@
       }
       .cell-content.expanded {
         max-height: none;
+      }
+      .mode-hidden{
+        display: none;
       }
       .expand-toggle {
         display: inline-block;
@@ -189,6 +199,7 @@
     <h1>Kaspa Tweets</h1>
 
     <div class="filters">
+      <div id="standard-filters">
       <label>
         Model approved:
         <select id="filter-approved">
@@ -216,7 +227,19 @@
           <option value="NONE">None (unmarked)</option>
         </select>
       </label>
+      </div>
+      <label id="id-search-section" class="mode-hidden">
+        Search by Tweet ID:
+        <input
+          id="search-id"
+          type="text"
+          placeholder="Enter tweet ID"
+          style="background: #0f172a; color: #e2e8f0; border: 1px solid #334155; padding: 0.25rem; border-radius: 0.25rem;"
+        />
+      </label>
+      <button id="id-search-btn" type="button" class="mode-hidden">Search</button>
       <button id="refresh-btn">Refresh</button>
+      <button id="mode-toggle-btn" class="btn-secondary">Switch to ID Search</button>
       <span id="loading">Loading...</span>
       <span id="gold-counts" style="margin-left: 1rem; color: #94a3b8; font-size: 0.9em;"></span>
     </div>
@@ -293,6 +316,9 @@
       const filterApproved = document.getElementById("filter-approved");
       const filterHuman = document.getElementById("filter-human");
       const filterGold = document.getElementById("filter-gold");
+      const modeToggleBtn = document.getElementById("mode-toggle-btn");
+      const searchInput = document.getElementById("search-id");
+      const idSearchBtn = document.getElementById("id-search-btn");
       const refreshBtn = document.getElementById("refresh-btn");
       const loadingIndicator = document.getElementById("loading");
       const goldCountsDisplay = document.getElementById("gold-counts");
@@ -307,6 +333,9 @@
       const pageDisplay = document.getElementById("page-display");
       const pageSizeSelect = document.getElementById("page-size");
       const resultsSummary = document.getElementById("results-summary");
+      const idSearchSection = document.getElementById("id-search-section");
+      const standardFilters = document.getElementById("standard-filters");
+      let filterSearchEnabled = false;
 
       prevPageBtn.disabled = true;
       nextPageBtn.disabled = true;
@@ -320,22 +349,55 @@
         hasPreviousPage: false,
       };
 
+      function switchSearchMode() {
+        filterSearchEnabled = !filterSearchEnabled;
+        updateModeVisibility();
+        resetFilters();
+
+        if (!filterSearchEnabled) {
+          paginationState.pageSize = 20;
+          pageSizeSelect.value = "20";
+        }
+
+        handleFilterChange();
+      }
+
+      function resetFilters() {
+        filterHuman.value = "all";
+        filterApproved.value = "all";
+        searchInput.value = "";
+      }
+
       function applyFiltersFromUrl() {
         const params = new URLSearchParams(window.location.search);
         setSelectFromParam(filterApproved, params.get("approved"));
         setSelectFromParam(filterHuman, params.get("humanDecision"));
         setSelectFromParam(filterGold, params.get("goldExample"));
+
+        const searchId = params.get("id");
+        if (searchId) {
+          filterSearchEnabled = true;
+          searchInput.value = searchId;
+        } else {
+          filterSearchEnabled = false;
+        }
+        updateModeVisibility();
         const urlPage = parsePositiveInteger(params.get("page"));
         const urlPageSize = parsePositiveInteger(params.get("pageSize"));
 
-        if (urlPage) {
-          paginationState.page = urlPage;
-        }
-
+        if (urlPage) paginationState.page = urlPage;
         if (urlPageSize && hasPageSizeOption(urlPageSize)) {
           pageSizeSelect.value = String(urlPageSize);
           paginationState.pageSize = urlPageSize;
         }
+      }
+
+      function updateModeVisibility() {
+        if (idSearchSection) idSearchSection.classList.toggle("mode-hidden", !filterSearchEnabled);
+        if (idSearchBtn) idSearchBtn.classList.toggle("mode-hidden", !filterSearchEnabled);
+        if (standardFilters) standardFilters.classList.toggle("mode-hidden", filterSearchEnabled);
+        if (refreshBtn) refreshBtn.classList.toggle("mode-hidden", filterSearchEnabled);
+        modeToggleBtn.textContent = filterSearchEnabled ? "Switch to Standard Filters" : "Switch to ID Search";
       }
 
       function setSelectFromParam(selectEl, value) {
@@ -354,6 +416,12 @@
         syncFilterParam(params, "approved", filterApproved.value);
         syncFilterParam(params, "humanDecision", filterHuman.value);
         syncFilterParam(params, "goldExample", filterGold.value);
+        const trimmedIdSearch = searchInput.value.trim();
+        if (trimmedIdSearch) {
+          params.set("id", trimmedIdSearch);
+        } else {
+          params.delete("id");
+        }
         params.set("page", String(paginationState.page));
         params.set("pageSize", String(paginationState.pageSize));
         const newSearch = params.toString();
@@ -381,6 +449,46 @@
         loadingIndicator.style.display = "inline";
         tweetsBody.innerHTML =
           '<tr><td colspan="8" style="text-align:center">Loading...</td></tr>';
+
+        const searchId = searchInput.value.trim();
+        if (searchId) {
+          try {
+            const res = await fetch(
+              `${API_BASE}/${encodeURIComponent(searchId)}`
+            );
+            if (res.status === 404) {
+              throw new Error("Tweet not found");
+            }
+            if (!res.ok) throw new Error("Failed to fetch tweet");
+            const payload = await res.json();
+            if (!payload?.data) {
+              throw new Error("Tweet not found");
+            }
+            renderTweets([payload.data]);
+            updatePagination({
+              page: 1,
+              pageSize: 1,
+              total: 1,
+              totalPages: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+            });
+          } catch (err) {
+            console.error(err);
+            tweetsBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: #ef4444;">${escapeHtml(err.message || "Error loading tweet")}</td></tr>`;
+            updatePagination({
+              page: 1,
+              pageSize: 1,
+              total: 0,
+              totalPages: 0,
+              hasNextPage: false,
+              hasPreviousPage: false,
+            });
+          } finally {
+            loadingIndicator.style.display = "none";
+          }
+          return;
+        }
 
         const params = new URLSearchParams();
         if (filterApproved.value !== "all")
@@ -520,9 +628,7 @@
 
       pageSizeSelect.addEventListener("change", () => {
         paginationState.pageSize = Number(pageSizeSelect.value) || 20;
-        paginationState.page = 1;
-        updateUrlFromFilters();
-        fetchTweets();
+        handleFilterChange();
       });
 
       tweetsBody.addEventListener("click", (event) => {
@@ -534,6 +640,15 @@
       filterApproved.addEventListener("change", handleFilterChange);
       filterHuman.addEventListener("change", handleFilterChange);
       filterGold.addEventListener("change", handleFilterChange);
+      idSearchBtn.addEventListener("click", handleFilterChange);
+      searchInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          handleFilterChange();
+        }
+      });
+      modeToggleBtn.addEventListener("click", () => {
+        switchSearchMode();
+      });
       refreshBtn.addEventListener("click", () => {
         updateUrlFromFilters();
         fetchTweets();

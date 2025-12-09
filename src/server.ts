@@ -92,6 +92,32 @@ app.get("/api/admin/tweets", (req, res) => {
   });
 });
 
+app.get("/api/tweets/:id", (req, res) => {
+  const password = req.query.password as string;
+  const authorized = !ADMIN_PASSWORD || password === ADMIN_PASSWORD;
+
+  if (password && !authorized) {
+    return res.status(401).send("Unauthorized: Invalid password.");
+  }
+
+  const tweet = store.get(req.params.id);
+  if (!tweet) {
+    return res.status(404).send("Tweet not found.");
+  }
+
+  const hasModelDecision = tweet.approved !== null;
+  if (!authorized && !hasModelDecision) {
+    return res.status(404).send("Tweet not found.");
+  }
+
+  const responseTweet = {
+    ...tweet,
+    quote: authorized || tweet.approved ? tweet.quote : "",
+  };
+
+  res.json({ data: responseTweet });
+});
+
 app.use(express.static(path.join(process.cwd(), "public")));
 
 app.post("/tweets/:id/human-decision", (req, res) => {
