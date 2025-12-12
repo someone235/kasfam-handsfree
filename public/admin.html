@@ -298,7 +298,7 @@
         <col /><!-- ID -->
         <col /><!-- Tweet -->
         <col style="min-width: 20%;" /><!-- Quote -->
-        <col /><!-- Score -->
+        <col /><!-- Percentile -->
         <col /><!-- URL -->
         <col /><!-- Model Approved -->
         <col /><!-- Human Decision -->
@@ -312,7 +312,7 @@
           <th>ID</th>
           <th>Tweet</th>
           <th>Quote</th>
-          <th>Score</th>
+          <th>Percentile</th>
           <th>URL</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
@@ -810,7 +810,7 @@
           }
 
           const result = await res.json();
-          alert(`Tweet processed!\nApproved: ${result.approved}\nScore: ${result.score ?? "(none)"}\nQuote: ${result.quote || "(none)"}`);
+          alert(`Tweet processed!\nApproved: ${result.approved}\nPercentile: ${result.score ?? "(none)"}\nQuote: ${result.quote || "(none)"}`);
           fetchTweets();
         } catch (err) {
           console.error(err);
@@ -1072,34 +1072,6 @@
         presetBtns.forEach(btn => btn.classList.remove("selected"));
       }
 
-      function openViewModal(correction) {
-        isViewMode = true;
-        modalContent.classList.add("view-only");
-        modalTitle.textContent = "Bad Example Reason";
-        modalSubtitle.textContent = "This tweet was marked as a bad example because:";
-        modalActions.style.display = "none";
-        modalViewActions.style.display = "flex";
-        customReasonInput.readOnly = true;
-
-        // Check if this matches a preset and highlight it
-        let matchedPreset = false;
-        presetBtns.forEach(btn => {
-          btn.classList.remove("selected");
-          if (btn.dataset.reason === correction) {
-            btn.classList.add("selected");
-            matchedPreset = true;
-          }
-        });
-
-        // If it's a custom reason, show it in the input
-        if (!matchedPreset) {
-          customReasonInput.value = correction;
-        } else {
-          customReasonInput.value = "";
-        }
-
-        rejectionModal.classList.add("active");
-      }
 
       modalCancelBtn.addEventListener("click", closeModal);
       modalCloseBtn.addEventListener("click", closeModal);

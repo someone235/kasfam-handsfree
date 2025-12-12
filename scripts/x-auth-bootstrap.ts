@@ -33,7 +33,7 @@ async function prompt(question: string): Promise<string> {
 }
 
 async function main() {
-  console.log("🔐 X API OAuth 1.0a Bootstrap (OOB/PIN Flow)");
+  console.log("X API OAuth 1.0a Bootstrap (OOB/PIN Flow)");
   console.log("=".repeat(50));
   console.log();
 
@@ -41,7 +41,7 @@ async function main() {
   const apiSecret = process.env.X_API_SECRET;
 
   if (!apiKey || !apiSecret) {
-    console.error("❌ Missing credentials. Set these env vars:");
+    console.error("Error: Missing credentials. Set these env vars:");
     console.error("   X_API_KEY=your_api_key");
     console.error("   X_API_SECRET=your_api_secret");
     process.exit(1);
@@ -49,7 +49,7 @@ async function main() {
 
   try {
     // Step 1: Create client and get request token
-    console.log("📝 Step 1: Requesting authorization link...");
+    console.log("Step 1: Requesting authorization link...");
     const client = new TwitterApi({
       appKey: apiKey,
       appSecret: apiSecret,
@@ -58,9 +58,9 @@ async function main() {
     const authLink = await client.generateAuthLink("oob");
 
     console.log();
-    console.log("✅ Authorization URL generated!");
+    console.log("Authorization URL generated!");
     console.log();
-    console.log("📋 INSTRUCTIONS:");
+    console.log("INSTRUCTIONS:");
     console.log("1. Open this URL in your browser:");
     console.log(`   ${authLink.url}`);
     console.log();
@@ -70,16 +70,16 @@ async function main() {
     console.log();
 
     // Step 2: Get PIN from user
-    const pin = await prompt("📥 Enter the PIN: ");
+    const pin = await prompt("Enter the PIN: ");
 
     if (!pin) {
-      console.error("❌ No PIN provided");
+      console.error("Error: No PIN provided");
       process.exit(1);
     }
 
     // Step 3: Exchange PIN for access tokens
     console.log();
-    console.log("🔄 Exchanging PIN for access tokens...");
+    console.log("Step 2: Exchanging PIN for access tokens...");
 
     const loginClient = new TwitterApi({
       appKey: apiKey,
@@ -88,24 +88,22 @@ async function main() {
       accessSecret: authLink.oauth_token_secret,
     });
 
-    const { accessToken, accessSecret, screenName, userId } =
-      await loginClient.login(pin);
+    const { accessToken, accessSecret, screenName, userId } = await loginClient.login(pin);
 
     console.log();
-    console.log("✅ Authorization successful!");
-    console.log(`👤 Authorized account: @${screenName} (ID: ${userId})`);
+    console.log("Authorization successful!");
+    console.log(`Authorized account: @${screenName} (ID: ${userId})`);
     console.log();
-    console.log("📋 Add these to your .env file:");
+    console.log("Add these to your .env file:");
     console.log("-".repeat(50));
     console.log(`X_ACCESS_TOKEN=${accessToken}`);
     console.log(`X_ACCESS_TOKEN_SECRET=${accessSecret}`);
     console.log("-".repeat(50));
     console.log();
-    console.log("🎉 Done! You can now use --source x-api");
-
+    console.log("Done! You can now use --source x-api");
   } catch (error) {
     console.error();
-    console.error("❌ OAuth flow failed:", error);
+    console.error("Error: OAuth flow failed:", error);
     process.exit(1);
   }
 }

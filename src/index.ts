@@ -177,6 +177,11 @@ async function getTweetsFeed(source: TweetSource, limit?: number): Promise<Tweet
     }
   }
 
+  // If using both sources and got nothing, that's an error
+  if (source === "both" && tweets.length === 0) {
+    throw new Error("Failed to fetch tweets from any source");
+  }
+
   log(`Total unique tweets: ${tweets.length}`);
 
   // Apply limit after combining all sources
