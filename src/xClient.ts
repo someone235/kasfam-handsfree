@@ -1,25 +1,30 @@
 import { TwitterApi } from "twitter-api-v2";
 
-export type XTweet = {
+export interface XTweet {
   id: string;
   text: string;
   url: string;
   author: {
     username: string;
   };
-};
+}
 
-type SearchOptions = {
+interface SearchOptions {
   query?: string;
   maxResults?: number;
-};
+}
 
-type OAuth1Credentials = {
+interface OAuth1Credentials {
   apiKey: string;
   apiSecret: string;
   accessToken: string;
   accessTokenSecret: string;
-};
+}
+
+interface XClientMethods {
+  searchTweets: (options?: SearchOptions) => Promise<XTweet[]>;
+  getTweetsByIds: (ids: string[]) => Promise<XTweet[]>;
+}
 
 const DEFAULT_QUERY = "kaspa -from:kaspaunchained -is:retweet lang:en";
 const DEFAULT_MAX_RESULTS = 100;
@@ -31,15 +36,23 @@ function getCredentials(): OAuth1Credentials {
   const accessTokenSecret = process.env.X_ACCESS_TOKEN_SECRET;
 
   const missing: string[] = [];
-  if (!apiKey) missing.push("X_API_KEY");
-  if (!apiSecret) missing.push("X_API_SECRET");
-  if (!accessToken) missing.push("X_ACCESS_TOKEN");
-  if (!accessTokenSecret) missing.push("X_ACCESS_TOKEN_SECRET");
+  if (!apiKey) {
+    missing.push("X_API_KEY");
+  }
+  if (!apiSecret) {
+    missing.push("X_API_SECRET");
+  }
+  if (!accessToken) {
+    missing.push("X_ACCESS_TOKEN");
+  }
+  if (!accessTokenSecret) {
+    missing.push("X_ACCESS_TOKEN_SECRET");
+  }
 
   if (missing.length > 0) {
     throw new Error(
       `Missing X API credentials: ${missing.join(", ")}. ` +
-      "Run the OAuth flow to generate access tokens."
+        "Run the OAuth flow to generate access tokens."
     );
   }
 
@@ -51,7 +64,7 @@ function getCredentials(): OAuth1Credentials {
   };
 }
 
-export function createXClient(credentials?: OAuth1Credentials) {
+export function createXClient(credentials?: OAuth1Credentials): XClientMethods {
   const creds = credentials ?? getCredentials();
 
   const client = new TwitterApi({

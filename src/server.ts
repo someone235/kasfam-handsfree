@@ -18,7 +18,7 @@ const store = createTweetStore();
 
 function loadFewShotExamples(): FewShotExample[] {
   const goldExamples = store.getGoldExamples();
-  return goldExamples.map(ex => ({
+  return goldExamples.map((ex) => ({
     tweetText: ex.text,
     response: ex.quote,
     correction: ex.goldExampleCorrection ?? undefined,
@@ -207,9 +207,7 @@ app.post("/tweets/:id/reeval", async (req, res) => {
 
     const updatedTweet = store.get(tweet.id);
     if (!updatedTweet) {
-      return res
-        .status(500)
-        .send("Failed to load updated tweet after re-evaluation.");
+      return res.status(500).send("Failed to load updated tweet after re-evaluation.");
     }
 
     res.json(updatedTweet);
@@ -217,8 +215,7 @@ app.post("/tweets/:id/reeval", async (req, res) => {
     if (error instanceof MalformedResponseError) {
       return res.status(500).send(`Malformed AI response: ${error.message}`);
     }
-    const message =
-      error instanceof Error ? error.message : "Unknown re-evaluation error";
+    const message = error instanceof Error ? error.message : "Unknown re-evaluation error";
     res.status(500).send(`Failed to re-evaluate tweet: ${message}`);
   }
 });
@@ -253,7 +250,11 @@ app.post("/api/admin/tweets/:id/gold-example", (req, res) => {
   // Only store correction for BAD examples, clear it otherwise
   const correctionToStore = normalized === "BAD" ? correction : null;
   store.setGoldExample(req.params.id, normalized, correctionToStore);
-  res.json({ success: true, goldExampleType: normalized, goldExampleCorrection: correctionToStore });
+  res.json({
+    success: true,
+    goldExampleType: normalized,
+    goldExampleCorrection: correctionToStore,
+  });
 });
 
 // Get gold example counts (public)
@@ -320,21 +321,17 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
-type FilterParseResult = {
+interface FilterParseResult {
   filters: TweetFilters;
   pagination: PaginationOptions;
-};
+}
 
 function parseFilters(query: any): FilterParseResult {
-  const approvedParam =
-    typeof query.approved === "string" ? query.approved : "all";
-  const humanParam =
-    typeof query.humanDecision === "string" ? query.humanDecision : "all";
-  const goldParam =
-    typeof query.goldExample === "string" ? query.goldExample : "all";
+  const approvedParam = typeof query.approved === "string" ? query.approved : "all";
+  const humanParam = typeof query.humanDecision === "string" ? query.humanDecision : "all";
+  const goldParam = typeof query.goldExample === "string" ? query.goldExample : "all";
   const pageParam = typeof query.page === "string" ? query.page : undefined;
-  const pageSizeParam =
-    typeof query.pageSize === "string" ? query.pageSize : undefined;
+  const pageSizeParam = typeof query.pageSize === "string" ? query.pageSize : undefined;
 
   const filters: TweetFilters = {};
 
@@ -344,11 +341,7 @@ function parseFilters(query: any): FilterParseResult {
     filters.hasModelDecision = false;
   }
 
-  if (
-    humanParam === "APPROVED" ||
-    humanParam === "REJECTED" ||
-    humanParam === "UNSET"
-  ) {
+  if (humanParam === "APPROVED" || humanParam === "REJECTED" || humanParam === "UNSET") {
     filters.humanDecision = humanParam as TweetFilters["humanDecision"];
   }
 
@@ -364,8 +357,12 @@ function parseFilters(query: any): FilterParseResult {
   const parsedPage = parsePositiveInteger(pageParam);
   const parsedPageSize = parsePositiveInteger(pageSizeParam);
 
-  if (parsedPage) pagination.page = parsedPage;
-  if (parsedPageSize) pagination.pageSize = parsedPageSize;
+  if (parsedPage) {
+    pagination.page = parsedPage;
+  }
+  if (parsedPageSize) {
+    pagination.pageSize = parsedPageSize;
+  }
 
   return { filters, pagination };
 }
@@ -385,7 +382,9 @@ function normalizeGoldExampleType(value?: string): GoldExampleType | null {
 }
 
 function parsePositiveInteger(value?: string): number | null {
-  if (!value) return null;
+  if (!value) {
+    return null;
+  }
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return null;

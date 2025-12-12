@@ -5,7 +5,7 @@ import path from "node:path";
 export type HumanDecision = "APPROVED" | "REJECTED";
 export type GoldExampleType = "GOOD" | "BAD";
 
-export type TweetRecord = {
+export interface TweetRecord {
   id: string;
   text: string;
   quote: string;
@@ -17,42 +17,42 @@ export type TweetRecord = {
   humanDecision: HumanDecision | null;
   goldExampleType: GoldExampleType | null;
   goldExampleCorrection: string | null;
-};
+}
 
-export type TweetRawInput = {
+export interface TweetRawInput {
   id: string;
   text: string;
   url: string;
-};
+}
 
-export type TweetDecisionInput = {
+export interface TweetDecisionInput {
   id: string;
   text: string;
   quote: string;
   url: string;
   approved: boolean;
   score: number;
-};
+}
 
-export type TweetFilters = {
+export interface TweetFilters {
   approved?: boolean;
   humanDecision?: HumanDecision | "UNSET";
   hasModelDecision?: boolean;
   goldExampleType?: GoldExampleType;
   hasGoldExample?: boolean;
-};
+}
 
-export type PaginationOptions = {
+export interface PaginationOptions {
   page?: number;
   pageSize?: number;
-};
+}
 
-type NormalizedPagination = {
+interface NormalizedPagination {
   page: number;
   pageSize: number;
   limit: number;
   offset: number;
-};
+}
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -98,21 +98,25 @@ function initDb(): SqliteDatabase {
 }
 
 function ensureColumnsAndIndexes(db: SqliteDatabase): void {
-  const columns = db.prepare("PRAGMA table_info(tweets)").all() as Array<{ name: string }>;
+  const columns = db.prepare("PRAGMA table_info(tweets)").all() as { name: string }[];
   const columnNames = new Set(columns.map((c) => c.name));
 
   if (!columnNames.has("goldExampleType")) {
-    db.exec("ALTER TABLE tweets ADD COLUMN goldExampleType TEXT DEFAULT NULL CHECK(goldExampleType IN ('GOOD','BAD'))");
+    db.exec(
+      "ALTER TABLE tweets ADD COLUMN goldExampleType TEXT DEFAULT NULL CHECK(goldExampleType IN ('GOOD','BAD'))"
+    );
   }
   if (!columnNames.has("goldExampleCorrection")) {
     db.exec("ALTER TABLE tweets ADD COLUMN goldExampleCorrection TEXT DEFAULT NULL");
   }
 
   // Ensure partial index exists for gold example filtering
-  const indexes = db.prepare("PRAGMA index_list(tweets)").all() as Array<{ name: string }>;
+  const indexes = db.prepare("PRAGMA index_list(tweets)").all() as { name: string }[];
   const indexNames = new Set(indexes.map((i) => i.name));
   if (!indexNames.has("idx_tweets_gold_example")) {
-    db.exec("CREATE INDEX idx_tweets_gold_example ON tweets(goldExampleType) WHERE goldExampleType IS NOT NULL");
+    db.exec(
+      "CREATE INDEX idx_tweets_gold_example ON tweets(goldExampleType) WHERE goldExampleType IS NOT NULL"
+    );
   }
 }
 
@@ -165,10 +169,7 @@ export function createTweetStore() {
         params.approved = filters.approved ? 1 : 0;
       }
 
-      if (
-        filters.humanDecision === "APPROVED" ||
-        filters.humanDecision === "REJECTED"
-      ) {
+      if (filters.humanDecision === "APPROVED" || filters.humanDecision === "REJECTED") {
         where.push("humanDecision = @humanDecision");
         params.humanDecision = filters.humanDecision;
       } else if (filters.humanDecision === "UNSET") {
@@ -200,7 +201,7 @@ export function createTweetStore() {
         ...params,
         limit: normalizedPagination.limit,
         offset: normalizedPagination.offset,
-      }) as Array<{
+      }) as {
         id: string;
         text: string;
         quote: string;
@@ -212,11 +213,11 @@ export function createTweetStore() {
         humanDecision: HumanDecision | null;
         goldExampleType: GoldExampleType | null;
         goldExampleCorrection: string | null;
-      }>;
+      }[];
 
-      const totalRow = db
-        .prepare(`SELECT COUNT(*) as total ${baseQuery}`)
-        .get(params) as { total: number };
+      const totalRow = db.prepare(`SELECT COUNT(*) as total ${baseQuery}`).get(params) as {
+        total: number;
+      };
 
       const tweets = rows.map((row) => ({
         ...row,
@@ -311,7 +312,7 @@ export function createTweetStore() {
         : `SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection
            FROM tweets WHERE goldExampleType IS NOT NULL ORDER BY goldExampleType, updatedAt DESC`;
 
-      const rows = db.prepare(sql).all(type ? { type } : {}) as Array<{
+      const rows = db.prepare(sql).all(type ? { type } : {}) as {
         id: string;
         text: string;
         quote: string;
@@ -323,7 +324,7 @@ export function createTweetStore() {
         humanDecision: HumanDecision | null;
         goldExampleType: GoldExampleType | null;
         goldExampleCorrection: string | null;
-      }>;
+      }[];
 
       return rows.map((row) => ({
         ...row,
@@ -339,27 +340,27 @@ export function createTweetStore() {
       db.close();
     },
     getConfig(key: string): string | null {
-      const row = db.prepare("SELECT value FROM config WHERE key = @key").get({ key }) as { value: string } | undefined;
+      const row = db.prepare("SELECT value FROM config WHERE key = @key").get({ key }) as
+        | { value: string }
+        | undefined;
       return row?.value ?? null;
     },
     setConfig(key: string, value: string | null) {
       if (value === null) {
         db.prepare("DELETE FROM config WHERE key = @key").run({ key });
       } else {
-        db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (@key, @value)").run({ key, value });
+        db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (@key, @value)").run({
+          key,
+          value,
+        });
       }
     },
   };
 }
 
-function normalizePagination(
-  options?: PaginationOptions
-): NormalizedPagination {
+function normalizePagination(options?: PaginationOptions): NormalizedPagination {
   const page = Math.max(1, Math.floor(options?.page ?? 1));
-  const requestedSize = Math.max(
-    1,
-    Math.floor(options?.pageSize ?? DEFAULT_PAGE_SIZE)
-  );
+  const requestedSize = Math.max(1, Math.floor(options?.pageSize ?? DEFAULT_PAGE_SIZE));
   const pageSize = Math.min(requestedSize, MAX_PAGE_SIZE);
 
   return {

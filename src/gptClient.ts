@@ -1,5 +1,10 @@
 import OpenAI from "openai";
-import { prompt as basePrompt, buildPromptWithExamples, type FewShotExample } from "./prompt.js";
+import {
+  prompt as basePrompt,
+  buildPromptWithExamples,
+  quickFilterPrompt,
+  type FewShotExample,
+} from "./prompt.js";
 
 const openAiClient = new OpenAI({ apiKey: assertApiKey() });
 
@@ -11,20 +16,28 @@ function assertApiKey(): string {
   return key;
 }
 
-export type AskTweetDecisionResult = {
+export interface AskTweetDecisionResult {
   quote: string;
   approved: boolean;
-  score: number;  // Percentile 0-100
-  responseId: string;  // For conversation chain persistence
-};
+  score: number; // Percentile 0-100
+  responseId: string; // For conversation chain persistence
+}
 
-export type AskTweetDecisionOptions = {
+export interface AskTweetDecisionOptions {
   examples?: FewShotExample[];
-  previousResponseId?: string | null;  // For conversation memory chain
-};
+  previousResponseId?: string | null; // For conversation memory chain
+}
+
+export interface QuickFilterResult {
+  approved: boolean;
+  rejectionReason?: string;
+}
 
 export class MalformedResponseError extends Error {
-  constructor(message: string, public rawResponse: string) {
+  constructor(
+    message: string,
+    public rawResponse: string
+  ) {
     super(message);
     this.name = "MalformedResponseError";
   }
@@ -36,9 +49,7 @@ export async function askTweetDecision(
 ): Promise<AskTweetDecisionResult> {
   const { examples, previousResponseId } = options;
 
-  const systemPrompt = examples?.length
-    ? buildPromptWithExamples(examples)
-    : basePrompt;
+  const systemPrompt = examples?.length ? buildPromptWithExamples(examples) : basePrompt;
 
   const response = await openAiClient.responses.create({
     model: "gpt-5.1",
@@ -82,14 +93,45 @@ export async function askTweetDecision(
     }
     score = parseInt(percentileMatch[1], 10);
     if (score < 0 || score > 100) {
-      throw new MalformedResponseError(
-        `Percentile must be 0-100, got: ${score}`,
-        quote
-      );
+      throw new MalformedResponseError(`Percentile must be 0-100, got: ${score}`, quote);
     }
   }
 
   return { quote, approved: isApproved, score, responseId: response.id };
+}
+
+export async function quickFilterTweet(tweetText: string): Promise<QuickFilterResult> {
+  const response = await openAiClient.responses.create({
+    model: "gpt-5.1",
+    input: [
+      { role: "system", content: quickFilterPrompt },
+      { role: "user", content: tweetText },
+    ],
+    reasoning: {
+      effort: "low",
+    },
+  });
+
+  const output = response.output_text?.trim() ?? "";
+
+  if (!output) {
+    throw new MalformedResponseError("Empty response from quick filter", output);
+  }
+
+  const isApproved = output.startsWith("Approved");
+  const isRejected = output.startsWith("Rejected");
+
+  if (!isApproved && !isRejected) {
+    throw new MalformedResponseError(
+      `Quick filter response must start with "Approved" or "Rejected", got: "${output.slice(0, 50)}..."`,
+      output
+    );
+  }
+
+  return {
+    approved: isApproved,
+    rejectionReason: isApproved ? undefined : output.replace(/^Rejected:\s*/i, "").trim(),
+  };
 }
 
 export { type FewShotExample } from "./prompt.js";

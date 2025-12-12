@@ -1,9 +1,9 @@
-export type FewShotExample = {
+export interface FewShotExample {
   tweetText: string;
-  response: string;  // The full "Approved.\nQT: ...\nPercentile: X" for GOOD examples
-  correction?: string;  // The correction "Rejected: reason" for BAD examples
+  response: string; // The full "Approved.\nQT: ...\nPercentile: X" for GOOD examples
+  correction?: string; // The correction "Rejected: reason" for BAD examples
   type: "GOOD" | "BAD";
-};
+}
 
 const basePrompt = `
 you are roleplaying a single human character.
@@ -145,9 +145,29 @@ end there.
 
 export const prompt = basePrompt;
 
+export const quickFilterPrompt = `
+You evaluate tweets for the Kaspa main X account. Your only job is to quickly decide: should this tweet be rejected or potentially approved for further review?
+
+REJECT if ANY of these apply:
+1. Promotes L2/rollup systems or frames Kaspa L1 as secondary (vprogs as L1 is fine)
+2. Promotes a project with its own token
+3. Bearish, doom-leaning, or defeatist tone about Kaspa
+4. Divisive, drama-driven, or stirs internal conflict
+5. Beef, gossip, conflict-bait, or punishment tone
+6. Not meaningfully about Kaspa (generic crypto/markets/life talk)
+7. Mainly about price action, whales, or accumulation
+8. Mainly celebrates a single person or team
+9. Not in English
+10. Generic, low-signal filler that does not hit a high bar for the main account
+
+OUTPUT FORMAT (exactly one of these):
+- If rejecting: "Rejected: <one short reason>"
+- If potentially worth approving: "Approved"
+`;
+
 export function buildPromptWithExamples(examples: FewShotExample[] = []): string {
-  const goodExamples = examples.filter(e => e.type === "GOOD").slice(0, 5);
-  const badExamples = examples.filter(e => e.type === "BAD").slice(0, 5);
+  const goodExamples = examples.filter((e) => e.type === "GOOD").slice(0, 5);
+  const badExamples = examples.filter((e) => e.type === "BAD").slice(0, 5);
 
   let examplesSection = "";
 
@@ -169,7 +189,7 @@ these are real examples of past decisions. use them to calibrate your bar.
       for (let i = 0; i < badExamples.length; i++) {
         const ex = badExamples[i];
         // Use correction if available, otherwise fall back to response
-        const decision = ex.correction || ex.response;
+        const decision = ex.correction ?? ex.response;
         examplesSection += `example ${i + 1}:
 tweet: "${ex.tweetText.slice(0, 200)}${ex.tweetText.length > 200 ? "..." : ""}"
 decision: ${decision}

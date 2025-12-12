@@ -1,28 +1,35 @@
 import "dotenv/config";
 import {
   askTweetDecision,
+  quickFilterTweet,
   MalformedResponseError,
   type FewShotExample,
 } from "./gptClient.js";
 import { createTweetStore, type TweetDecisionInput, type TweetRawInput } from "./tweetStore.js";
 import { createXClient } from "./xClient.js";
 
-type Tweet = {
+interface Tweet {
   id: string;
   text: string;
   url: string;
   author: {
     username: string;
   };
-};
+}
 
 type TweetSource = "kaspa-news" | "x-api" | "both";
 
 type TweetStore = ReturnType<typeof createTweetStore>;
 
+interface Round1Result {
+  tweet: Tweet;
+  approved: boolean;
+  rejectionReason?: string;
+}
+
 const RESPONSE_ID_KEY = "previousResponseId";
 
-function log(msg: string) {
+function log(msg: string): void {
   console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
 }
 
@@ -31,9 +38,7 @@ async function getKaspaNewsFeed(limit?: number): Promise<Tweet[]> {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) {
-    throw new Error(
-      `Failed to fetch kaspa tweets: ${res.status} ${res.statusText}`
-    );
+    throw new Error(`Failed to fetch kaspa tweets: ${res.status} ${res.statusText}`);
   }
   const response = await res.json();
   const allTweets = response.tweets ?? [];
@@ -47,21 +52,21 @@ async function getKaspaNewsFeed(limit?: number): Promise<Tweet[]> {
 }
 
 // Returns { found, notFound } - does not throw on missing IDs
-async function findTweetsInKaspaNews(tweetIds: string[]): Promise<{ found: Tweet[]; notFound: string[] }> {
+async function findTweetsInKaspaNews(
+  tweetIds: string[]
+): Promise<{ found: Tweet[]; notFound: string[] }> {
   const res = await fetch("https://kaspa.news/api/kaspa-tweets", {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) {
-    throw new Error(
-      `Failed to fetch kaspa tweets: ${res.status} ${res.statusText}`
-    );
+    throw new Error(`Failed to fetch kaspa tweets: ${res.status} ${res.statusText}`);
   }
   const response = await res.json();
   const allTweets = response.tweets ?? [];
 
   const found = allTweets.filter((t: Tweet) => tweetIds.includes(t.id));
   const foundIds = found.map((t: Tweet) => t.id);
-  const notFound = tweetIds.filter(id => !foundIds.includes(id));
+  const notFound = tweetIds.filter((id) => !foundIds.includes(id));
 
   return { found, notFound };
 }
@@ -82,7 +87,7 @@ async function getTweetsByIds(source: TweetSource, tweetIds: string[]): Promise<
     // kaspa-news only: error if not found
     const { found, notFound } = await findTweetsInKaspaNews(tweetIds);
     if (notFound.length > 0) {
-      throw new Error(`Tweet ID(s) not found in kaspa.news: ${notFound.join(', ')}`);
+      throw new Error(`Tweet ID(s) not found in kaspa.news: ${notFound.join(", ")}`);
     }
     log(`Found ${found.length} tweets in kaspa.news`);
     return found;
@@ -93,9 +98,9 @@ async function getTweetsByIds(source: TweetSource, tweetIds: string[]): Promise<
     const tweets = await getXApiTweetsByIds(tweetIds);
     log(`Fetched ${tweets.length} tweets from X API`);
     if (tweets.length < tweetIds.length) {
-      const foundIds = tweets.map(t => t.id);
-      const notFound = tweetIds.filter(id => !foundIds.includes(id));
-      throw new Error(`Tweet ID(s) not found in X API: ${notFound.join(', ')}`);
+      const foundIds = tweets.map((t) => t.id);
+      const notFound = tweetIds.filter((id) => !foundIds.includes(id));
+      throw new Error(`Tweet ID(s) not found in X API: ${notFound.join(", ")}`);
     }
     return tweets;
   }
@@ -114,13 +119,13 @@ async function getTweetsByIds(source: TweetSource, tweetIds: string[]): Promise<
       found.push(...xApiTweets);
 
       // Check if any are still missing
-      const allFoundIds = found.map(t => t.id);
-      const stillMissing = tweetIds.filter(id => !allFoundIds.includes(id));
+      const allFoundIds = found.map((t) => t.id);
+      const stillMissing = tweetIds.filter((id) => !allFoundIds.includes(id));
       if (stillMissing.length > 0) {
-        throw new Error(`Tweet ID(s) not found in any source: ${stillMissing.join(', ')}`);
+        throw new Error(`Tweet ID(s) not found in any source: ${stillMissing.join(", ")}`);
       }
     } catch (error) {
-      if (error instanceof Error && error.message.includes('not found')) {
+      if (error instanceof Error && error.message.includes("not found")) {
         throw error;
       }
       throw new Error(`Failed to fetch from X API: ${error}`);
@@ -135,7 +140,7 @@ async function getTweetsFeed(source: TweetSource, limit?: number): Promise<Tweet
   const tweets: Tweet[] = [];
   const seenIds = new Set<string>();
 
-  const addTweets = (newTweets: Tweet[]) => {
+  const addTweets = (newTweets: Tweet[]): void => {
     for (const tweet of newTweets) {
       if (!seenIds.has(tweet.id)) {
         seenIds.add(tweet.id);
@@ -183,7 +188,11 @@ async function getTweetsFeed(source: TweetSource, limit?: number): Promise<Tweet
   return tweets;
 }
 
-async function getTweets(source: TweetSource, limit?: number, tweetIds?: string[]): Promise<Tweet[]> {
+async function getTweets(
+  source: TweetSource,
+  limit?: number,
+  tweetIds?: string[]
+): Promise<Tweet[]> {
   // If specific tweet IDs requested, use ID-based lookup
   if (tweetIds !== undefined && tweetIds.length > 0) {
     return getTweetsByIds(source, tweetIds);
@@ -193,11 +202,11 @@ async function getTweets(source: TweetSource, limit?: number, tweetIds?: string[
   return getTweetsFeed(source, limit);
 }
 
-type ParsedArgs = {
+interface ParsedArgs {
   source: TweetSource;
   limit: number | undefined;
   tweetIds: string[] | undefined;
-};
+}
 
 function getDefaultSource(): TweetSource {
   const envSource = process.env.DEFAULT_SOURCE;
@@ -213,9 +222,9 @@ function extractArguments(args: string[]): ParsedArgs {
   let tweetIds: string[] | undefined = undefined;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--source') {
+    if (args[i] === "--source") {
       if (i + 1 >= args.length) {
-        throw new Error('--source requires a value');
+        throw new Error("--source requires a value");
       }
       const value = args[i + 1];
       if (value === "kaspa-news" || value === "x-api" || value === "both") {
@@ -224,21 +233,24 @@ function extractArguments(args: string[]): ParsedArgs {
         throw new Error(`Invalid source: ${value}. Use: kaspa-news, x-api, or both`);
       }
       i++;
-    } else if (args[i] === '--limit') {
+    } else if (args[i] === "--limit") {
       if (i + 1 >= args.length) {
-        throw new Error('--limit requires a value');
+        throw new Error("--limit requires a value");
       }
       limit = parseInt(args[i + 1], 10);
       i++;
-    } else if (args[i] === '--tweet-id') {
+    } else if (args[i] === "--tweet-id") {
       if (i + 1 >= args.length) {
-        throw new Error('--tweet-id requires a value');
+        throw new Error("--tweet-id requires a value");
       }
-      tweetIds = args[i + 1].split(',').map(id => id.trim()).filter(id => id.length > 0);
+      tweetIds = args[i + 1]
+        .split(",")
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0);
       i++;
-    } else if (args[i].startsWith('--')) {
+    } else if (args[i].startsWith("--")) {
       throw new Error(`Unknown argument: ${args[i]}`);
-    } else if (i === 0 || !args[i - 1].startsWith('--')) {
+    } else if (i === 0 || !args[i - 1].startsWith("--")) {
       // standalone value that's not following a flag
       throw new Error(`Unexpected argument: ${args[i]}`);
     }
@@ -256,18 +268,20 @@ function validateArguments(parsed: ParsedArgs): void {
 
   if (parsed.tweetIds !== undefined) {
     if (parsed.tweetIds.length === 0) {
-      throw new Error('--tweet-id cannot be empty');
+      throw new Error("--tweet-id cannot be empty");
     }
     for (const id of parsed.tweetIds) {
-      if (id.trim() === '') {
-        throw new Error('--tweet-id contains empty values');
+      if (id.trim() === "") {
+        throw new Error("--tweet-id contains empty values");
       }
     }
   }
 
   // warn if both limit and tweetIds are provided (tweetIds takes precedence)
   if (parsed.limit !== undefined && parsed.tweetIds !== undefined) {
-    console.warn('Warning: both --limit and --tweet-id provided. --tweet-id takes precedence, --limit will be ignored.');
+    console.warn(
+      "Warning: both --limit and --tweet-id provided. --tweet-id takes precedence, --limit will be ignored."
+    );
   }
 }
 
@@ -280,7 +294,7 @@ function parseArgs(): ParsedArgs {
 
 function loadFewShotExamples(store: TweetStore): FewShotExample[] {
   const goldExamples = store.getGoldExamples();
-  return goldExamples.map(ex => ({
+  return goldExamples.map((ex) => ({
     tweetText: ex.text,
     response: ex.quote,
     correction: ex.goldExampleCorrection ?? undefined,
@@ -288,7 +302,137 @@ function loadFewShotExamples(store: TweetStore): FewShotExample[] {
   }));
 }
 
-async function main() {
+interface Round1Stats {
+  results: Round1Result[];
+  rejectedCount: number;
+}
+
+async function runQuickFilter(tweets: Tweet[], store: TweetStore): Promise<Round1Stats> {
+  log(`\n=== ROUND 1: Quick Filter ===`);
+  const results: Round1Result[] = [];
+  let rejectedCount = 0;
+
+  for (let i = 0; i < tweets.length; i++) {
+    const tweet = tweets[i];
+    log(`[${i + 1}/${tweets.length}] Quick filter...`);
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+    try {
+      const result = await quickFilterTweet(tweet.text);
+      results.push({
+        tweet,
+        approved: result.approved,
+        rejectionReason: result.rejectionReason,
+      });
+
+      if (!result.approved) {
+        rejectedCount++;
+        const payload: TweetDecisionInput = {
+          id: tweet.id,
+          text: tweet.text,
+          url: tweet.url,
+          quote: `Rejected: ${result.rejectionReason ?? "quick filter"}`,
+          approved: false,
+          score: 0,
+        };
+        store.save(payload);
+        log(`  REJECTED (R1): ${result.rejectionReason ?? "quick filter"}`);
+      } else {
+        log(`  PASSED -> Round 2`);
+      }
+    } catch (error) {
+      if (error instanceof MalformedResponseError) {
+        log(`  MALFORMED (R1): ${error.message} - passing to Round 2`);
+        results.push({ tweet, approved: true });
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return { results, rejectedCount };
+}
+
+interface Round2Stats {
+  approvedCount: number;
+  rejectedCount: number;
+  skippedCount: number;
+}
+
+async function runFullEvaluation(
+  passedTweets: Round1Result[],
+  store: TweetStore,
+  fewShotExamples: FewShotExample[]
+): Promise<Round2Stats> {
+  log(`\n=== ROUND 2: Full Evaluation (${passedTweets.length} tweets) ===`);
+
+  let previousResponseId = store.getConfig(RESPONSE_ID_KEY);
+  if (previousResponseId) {
+    log(`Resuming conversation chain from: ${previousResponseId.slice(-8)}`);
+  } else {
+    log(`Starting new conversation chain`);
+  }
+
+  let approvedCount = 0;
+  let rejectedCount = 0;
+  let skippedCount = 0;
+
+  for (let i = 0; i < passedTweets.length; i++) {
+    const { tweet } = passedTweets[i];
+    log(`\n[${i + 1}/${passedTweets.length}] Full evaluation...`);
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+
+    try {
+      const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
+        examples: fewShotExamples,
+        previousResponseId,
+      });
+
+      previousResponseId = responseId;
+      store.setConfig(RESPONSE_ID_KEY, responseId);
+
+      log(`  [chain: ${responseId.slice(-8)}]`);
+
+      const payload: TweetDecisionInput = {
+        id: tweet.id,
+        text: tweet.text,
+        url: tweet.url,
+        quote: quote ?? "",
+        approved,
+        score,
+      };
+
+      store.save(payload);
+
+      if (approved) {
+        approvedCount++;
+        const qtMatch = quote.match(/QT:\s*(.+?)(?=\nPercentile:|$)/is);
+        const qt = qtMatch ? qtMatch[1].trim() : "";
+        log(`  APPROVED (Percentile: ${score})`);
+        log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
+        log(`  QT: ${qt}`);
+      } else {
+        rejectedCount++;
+        log(`  REJECTED (R2): ${quote}`);
+        log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
+      }
+    } catch (error) {
+      if (error instanceof MalformedResponseError) {
+        skippedCount++;
+        log(`  MALFORMED (R2): ${error.message}`);
+        log(`  Raw: ${error.rawResponse.slice(0, 100)}...`);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return { approvedCount, rejectedCount, skippedCount };
+}
+
+async function main(): Promise<void> {
   const { source, limit, tweetIds } = parseArgs();
   log(`Using source: ${source}`);
 
@@ -335,77 +479,35 @@ async function main() {
 
     log(`Found ${tweetsToProcess.length} tweets needing evaluation`);
 
-    // Load persistent conversation memory from database
-    let previousResponseId = store.getConfig(RESPONSE_ID_KEY);
-    if (previousResponseId) {
-      log(`Resuming conversation chain from: ${previousResponseId.slice(-8)}`);
-    } else {
-      log(`Starting new conversation chain`);
+    // Run two-round evaluation
+    const { results: round1Results, rejectedCount: round1Rejected } = await runQuickFilter(
+      tweetsToProcess,
+      store
+    );
+
+    const passedRound1 = round1Results.filter((r) => r.approved);
+    log(`\nRound 1 complete: ${passedRound1.length} passed, ${round1Rejected} rejected`);
+
+    if (passedRound1.length === 0) {
+      log("No tweets passed Round 1. Done.");
+      log(`\n--- Summary ---`);
+      log(`Round 1: ${tweetsToProcess.length} evaluated, ${round1Rejected} rejected`);
+      log(`Final: 0 approved | ${round1Rejected} rejected`);
+      return;
     }
 
-    // Process tweets one at a time (conversation memory accumulates context)
-    let approvedCount = 0;
-    let rejectedCount = 0;
-    let skippedCount = 0;
+    const round2Stats = await runFullEvaluation(passedRound1, store, fewShotExamples);
 
-    for (let i = 0; i < tweetsToProcess.length; i++) {
-      const tweet = tweetsToProcess[i];
-      log(`\n[${i + 1}/${tweetsToProcess.length}] Evaluating tweet...`);
-
-      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-
-      try {
-        const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
-          examples: fewShotExamples,
-          previousResponseId,
-        });
-
-        // Update conversation chain
-        previousResponseId = responseId;
-        store.setConfig(RESPONSE_ID_KEY, responseId);
-
-        log(`  [chain: ${responseId.slice(-8)}]`);  // Last 8 chars of response ID for brevity
-
-        const payload: TweetDecisionInput = {
-          id: tweet.id,
-          text: tweet.text,
-          url: tweet.url,
-          quote: quote ?? "",
-          approved,
-          score,
-        };
-
-        store.save(payload);
-
-        // Log result
-        if (approved) {
-          approvedCount++;
-          const qtMatch = quote.match(/QT:\s*(.+?)(?=\nPercentile:|$)/is);
-          const qt = qtMatch ? qtMatch[1].trim() : "";
-          log(`✓ APPROVED (Percentile: ${score})`);
-          log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
-          log(`  QT: ${qt}`);
-        } else {
-          rejectedCount++;
-          log(`✗ REJECTED: ${quote}`);
-          log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
-        }
-      } catch (error) {
-        if (error instanceof MalformedResponseError) {
-          skippedCount++;
-          log(`⚠ MALFORMED RESPONSE for tweet ${tweet.id}: ${error.message}`);
-          log(`  Raw response: ${error.rawResponse.slice(0, 100)}...`);
-          // Don't save - leave tweet unprocessed for retry
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    const processedCount = approvedCount + rejectedCount;
-    log(`\n━━━ Summary ━━━`);
-    log(`Processed ${processedCount} of ${tweetsToProcess.length} tweets`);
-    log(`Approved: ${approvedCount} | Rejected: ${rejectedCount}${skippedCount > 0 ? ` | Skipped: ${skippedCount}` : ""}`);
+    // Final summary
+    const totalRejected = round1Rejected + round2Stats.rejectedCount;
+    log(`\n--- Summary ---`);
+    log(
+      `Round 1: ${tweetsToProcess.length} evaluated, ${passedRound1.length} passed, ${round1Rejected} rejected`
+    );
+    log(
+      `Round 2: ${passedRound1.length} evaluated, ${round2Stats.approvedCount} approved, ${round2Stats.rejectedCount} rejected${round2Stats.skippedCount > 0 ? `, ${round2Stats.skippedCount} skipped` : ""}`
+    );
+    log(`Final: ${round2Stats.approvedCount} approved | ${totalRejected} rejected`);
   } catch (error) {
     if (error instanceof Error) {
       console.error(`Error: ${error.message}`);
