@@ -110,6 +110,7 @@ export async function askTweetDecision(
         reasoning: {
           effort: "high",
         },
+        truncation: "auto",
         ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
       }),
     "R2 full evaluation"
