@@ -30,9 +30,25 @@ function applyMigration(db, filePath) {
   try {
     db.exec(sql);
   } catch (error) {
+    // Rollback any open transaction before continuing
+    if (db.inTransaction) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        // ignore rollback errors
+      }
+    }
+
     if (
       error instanceof Error &&
       /duplicate column name/i.test(error.message)
+    ) {
+      console.warn(`Skipping ${path.basename(filePath)}: ${error.message}`);
+      return;
+    }
+    if (
+      error instanceof Error &&
+      /table .* already exists/i.test(error.message)
     ) {
       console.warn(`Skipping ${path.basename(filePath)}: ${error.message}`);
       return;
