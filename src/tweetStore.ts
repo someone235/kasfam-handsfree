@@ -1,6 +1,7 @@
 import Database, { Database as SqliteDatabase } from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { applyMigrations } from "./migrations.js";
 
 export type HumanDecision = "APPROVED" | "REJECTED";
 export type GoldExampleType = "GOOD" | "BAD";
@@ -67,52 +68,9 @@ function resolveDbPath() {
 function initDb(): SqliteDatabase {
   const db = new Database(resolveDbPath());
   db.pragma("journal_mode = WAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tweets (
-      id TEXT PRIMARY KEY,
-      text TEXT NOT NULL,
-      quote TEXT NOT NULL DEFAULT '',
-      url TEXT NOT NULL,
-      approved INTEGER DEFAULT NULL,
-      score INTEGER NOT NULL DEFAULT 0,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
-      updatedAt TEXT DEFAULT NULL,
-      humanDecision TEXT DEFAULT NULL CHECK(humanDecision IN ('APPROVED','REJECTED')),
-      goldExampleType TEXT DEFAULT NULL CHECK(goldExampleType IN ('GOOD','BAD')),
-      goldExampleCorrection TEXT DEFAULT NULL
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_tweets_id ON tweets(id);
-    CREATE INDEX IF NOT EXISTS idx_tweets_gold_example ON tweets(goldExampleType)
-      WHERE goldExampleType IS NOT NULL;
-  `);
-
-  // Ensure columns and indexes exist for existing databases (migration-like behavior)
-  ensureColumnsAndIndexes(db);
+  applyMigrations(db);
 
   return db;
-}
-
-function ensureColumnsAndIndexes(db: SqliteDatabase): void {
-  const columns = db.prepare("PRAGMA table_info(tweets)").all() as { name: string }[];
-  const columnNames = new Set(columns.map((c) => c.name));
-
-  if (!columnNames.has("goldExampleType")) {
-    db.exec(
-      "ALTER TABLE tweets ADD COLUMN goldExampleType TEXT DEFAULT NULL CHECK(goldExampleType IN ('GOOD','BAD'))"
-    );
-  }
-  if (!columnNames.has("goldExampleCorrection")) {
-    db.exec("ALTER TABLE tweets ADD COLUMN goldExampleCorrection TEXT DEFAULT NULL");
-  }
-
-  // Ensure partial index exists for gold example filtering
-  const indexes = db.prepare("PRAGMA index_list(tweets)").all() as { name: string }[];
-  const indexNames = new Set(indexes.map((i) => i.name));
-  if (!indexNames.has("idx_tweets_gold_example")) {
-    db.exec(
-      "CREATE INDEX idx_tweets_gold_example ON tweets(goldExampleType) WHERE goldExampleType IS NOT NULL"
-    );
-  }
 }
 
 export function createTweetStore() {
