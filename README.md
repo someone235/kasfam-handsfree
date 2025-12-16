@@ -193,4 +193,5 @@ The `web` service exposes `http://localhost:4000` and stays running, while the `
 
 ## Important Notes
 
-- Conversation memory is shared across CLI and server—avoid running parallel evaluations for consistent calibration
+- Conversation memory is disabled by default. To enable it, set `CONVERSATION_MEMORY=session` (per run) or `CONVERSATION_MEMORY=persist` (stored in DB and shared across CLI/server).
+- If using `CONVERSATION_MEMORY=persist`, avoid running parallel evaluations to prevent chains from interleaving.
