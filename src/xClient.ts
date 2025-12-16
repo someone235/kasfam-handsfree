@@ -80,29 +80,50 @@ export function createXClient(credentials?: OAuth1Credentials): XClientMethods {
     const query = options.query ?? DEFAULT_QUERY;
     const maxResults = options.maxResults ?? DEFAULT_MAX_RESULTS;
 
-    const result = await readOnlyClient.v2.search(query, {
-      max_results: Math.min(maxResults, 100),
+    if (maxResults <= 0) {
+      return [];
+    }
+
+    const perRequest = Math.min(Math.max(maxResults, 10), 100);
+
+    let paginator = await readOnlyClient.v2.search(query, {
+      max_results: perRequest,
       "tweet.fields": ["author_id", "created_at"],
       expansions: ["author_id"],
       "user.fields": ["username"],
     });
 
-    const users = new Map<string, string>();
-    if (result.includes?.users) {
-      for (const user of result.includes.users) {
+    const tweets: XTweet[] = [];
+    const seen = new Set<string>();
+
+    const addPage = (page: typeof paginator): void => {
+      const users = new Map<string, string>();
+      for (const user of page.includes?.users ?? []) {
         users.set(user.id, user.username);
       }
-    }
 
-    const tweets: XTweet[] = [];
-    for (const tweet of result.data?.data ?? []) {
-      const username = users.get(tweet.author_id ?? "") ?? "unknown";
-      tweets.push({
-        id: tweet.id,
-        text: tweet.text,
-        url: `https://x.com/${username}/status/${tweet.id}`,
-        author: { username },
-      });
+      for (const tweet of page.data?.data ?? []) {
+        if (tweets.length >= maxResults) {
+          return;
+        }
+        if (seen.has(tweet.id)) {
+          continue;
+        }
+        seen.add(tweet.id);
+        const username = users.get(tweet.author_id ?? "") ?? "unknown";
+        tweets.push({
+          id: tweet.id,
+          text: tweet.text,
+          url: `https://x.com/${username}/status/${tweet.id}`,
+          author: { username },
+        });
+      }
+    };
+
+    addPage(paginator);
+    while (!paginator.done && tweets.length < maxResults) {
+      paginator = await paginator.next(perRequest);
+      addPage(paginator);
     }
 
     return tweets;

@@ -71,9 +71,9 @@ async function findTweetsInKaspaNews(
   return { found, notFound };
 }
 
-async function getXApiFeed(): Promise<Tweet[]> {
+async function getXApiFeed(limit?: number): Promise<Tweet[]> {
   const client = createXClient();
-  return await client.searchTweets();
+  return await client.searchTweets(limit !== undefined ? { maxResults: limit } : undefined);
 }
 
 async function getXApiTweetsByIds(tweetIds: string[]): Promise<Tweet[]> {
@@ -165,7 +165,9 @@ async function getTweetsFeed(source: TweetSource, limit?: number): Promise<Tweet
 
   if (source === "x-api" || source === "both") {
     try {
-      const xApiTweets = await getXApiFeed();
+      const xApiLimit =
+        source === "both" && limit !== undefined ? Math.max(0, limit - tweets.length) : limit;
+      const xApiTweets = await getXApiFeed(xApiLimit);
       log(`Fetched ${xApiTweets.length} tweets from X API`);
       addTweets(xApiTweets);
     } catch (error) {

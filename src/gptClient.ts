@@ -5,11 +5,9 @@ import {
   quickFilterPrompt,
   type FewShotExample,
 } from "./prompt.js";
+import { withRetry } from "./openaiRetry.js";
 
 const openAiClient = new OpenAI({ apiKey: assertApiKey() });
-
-const MAX_RETRIES = 3;
-const BASE_DELAY_MS = 3000;
 
 function assertApiKey(): string {
   const key = process.env.OPENAI_API_KEY;
@@ -17,51 +15,6 @@ function assertApiKey(): string {
     throw new Error("Missing OPENAI_API_KEY environment variable.");
   }
   return key;
-}
-
-function isRateLimitError(error: unknown): boolean {
-  if (error instanceof OpenAI.APIError && error.status === 429) {
-    return true;
-  }
-  return false;
-}
-
-function extractRetryDelay(error: unknown): number {
-  if (error instanceof OpenAI.APIError && error.message) {
-    const match = error.message.match(/try again in ([\d.]+)s/i);
-    if (match) {
-      return Math.ceil(parseFloat(match[1]) * 1000);
-    }
-  }
-  return BASE_DELAY_MS;
-}
-
-async function withRetry<T>(operation: () => Promise<T>, context: string): Promise<T> {
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-
-      if (!isRateLimitError(error)) {
-        throw error;
-      }
-
-      if (attempt === MAX_RETRIES) {
-        break;
-      }
-
-      const delay = extractRetryDelay(error);
-      console.log(
-        `  Rate limited (${context}), waiting ${delay}ms before retry ${attempt + 1}/${MAX_RETRIES}...`
-      );
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-
-  throw lastError;
 }
 
 export interface AskTweetDecisionResult {
