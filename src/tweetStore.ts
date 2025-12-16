@@ -84,11 +84,6 @@ function initDb(): SqliteDatabase {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tweets_id ON tweets(id);
     CREATE INDEX IF NOT EXISTS idx_tweets_gold_example ON tweets(goldExampleType)
       WHERE goldExampleType IS NOT NULL;
-
-    CREATE TABLE IF NOT EXISTS config (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    );
   `);
 
   // Ensure columns and indexes exist for existing databases (migration-like behavior)
@@ -338,22 +333,6 @@ export function createTweetStore() {
     },
     close() {
       db.close();
-    },
-    getConfig(key: string): string | null {
-      const row = db.prepare("SELECT value FROM config WHERE key = @key").get({ key }) as
-        | { value: string }
-        | undefined;
-      return row?.value ?? null;
-    },
-    setConfig(key: string, value: string | null) {
-      if (value === null) {
-        db.prepare("DELETE FROM config WHERE key = @key").run({ key });
-      } else {
-        db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (@key, @value)").run({
-          key,
-          value,
-        });
-      }
     },
   };
 }

@@ -21,12 +21,11 @@ export interface AskTweetDecisionResult {
   quote: string;
   approved: boolean;
   score: number; // Percentile 0-100
-  responseId: string; // For conversation chain persistence
+  responseId: string; // OpenAI response id
 }
 
 export interface AskTweetDecisionOptions {
   examples?: FewShotExample[];
-  previousResponseId?: string | null; // For conversation memory chain
 }
 
 export interface QuickFilterResult {
@@ -48,7 +47,7 @@ export async function askTweetDecision(
   tweetText: string,
   options: AskTweetDecisionOptions = {}
 ): Promise<AskTweetDecisionResult> {
-  const { examples, previousResponseId } = options;
+  const { examples } = options;
 
   const systemPrompt = examples?.length ? buildPromptWithExamples(examples) : basePrompt;
 
@@ -64,7 +63,6 @@ export async function askTweetDecision(
           effort: "high",
         },
         truncation: "auto",
-        ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
       }),
     "R2 full evaluation"
   );

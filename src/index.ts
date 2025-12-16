@@ -5,7 +5,6 @@ import {
   MalformedResponseError,
   type FewShotExample,
 } from "./gptClient.js";
-import { getConversationMemoryMode } from "./conversationMemory.js";
 import { createTweetStore, type TweetDecisionInput, type TweetRawInput } from "./tweetStore.js";
 import { createXClient } from "./xClient.js";
 
@@ -27,8 +26,6 @@ interface Round1Result {
   approved: boolean;
   rejectionReason?: string;
 }
-
-const RESPONSE_ID_KEY = "previousResponseId";
 
 function log(msg: string): void {
   console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
@@ -375,22 +372,6 @@ async function runFullEvaluation(
 ): Promise<Round2Stats> {
   log(`\n=== ROUND 2: Full Evaluation (${passedTweets.length} tweets) ===`);
 
-  const memoryMode = getConversationMemoryMode();
-  let previousResponseId: string | null = null;
-
-  if (memoryMode === "persist") {
-    previousResponseId = store.getConfig(RESPONSE_ID_KEY);
-    if (previousResponseId) {
-      log(`Resuming conversation chain from: ${previousResponseId.slice(-8)}`);
-    } else {
-      log(`Starting new conversation chain (persist)`);
-    }
-  } else if (memoryMode === "session") {
-    log("Starting new conversation chain (session)");
-  } else {
-    log("Conversation memory disabled");
-  }
-
   let approvedCount = 0;
   let rejectedCount = 0;
   let skippedCount = 0;
@@ -404,17 +385,9 @@ async function runFullEvaluation(
     try {
       const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
         examples: fewShotExamples,
-        previousResponseId: memoryMode === "off" ? null : previousResponseId,
       });
 
-      if (memoryMode !== "off") {
-        previousResponseId = responseId;
-      }
-      if (memoryMode === "persist") {
-        store.setConfig(RESPONSE_ID_KEY, responseId);
-      }
-
-      log(`  [chain: ${responseId.slice(-8)}]`);
+      log(`  [response: ${responseId.slice(-8)}]`);
 
       const payload: TweetDecisionInput = {
         id: tweet.id,

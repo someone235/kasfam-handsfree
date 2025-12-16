@@ -68,7 +68,7 @@ percentile guidance:
 - 90+ = exceptional, best-of-the-best
 - below 50 = weaker but still worth approving
 
-use the gold examples and any previous tweets in this session to calibrate your percentile estimates. be consistent.
+use the gold examples to calibrate your percentile estimates. be consistent.
 
 qt rules (where your roleplay lives)
 
