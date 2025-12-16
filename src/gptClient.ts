@@ -20,7 +20,7 @@ function assertApiKey(): string {
 export interface AskTweetDecisionResult {
   quote: string;
   approved: boolean;
-  score: number; // Percentile 0-100
+  score: number; // Score 0-100
   responseId: string; // OpenAI response id
 }
 
@@ -85,19 +85,19 @@ export async function askTweetDecision(
     );
   }
 
-  // Parse percentile for approved tweets
+  // Parse score for approved tweets
   let score = 0;
   if (isApproved) {
-    const percentileMatch = quote.match(/Percentile:\s*(\d+)/i);
-    if (!percentileMatch) {
+    const scoreMatch = quote.match(/(?:Score|Percentile):\s*(\d+)/i);
+    if (!scoreMatch) {
       throw new MalformedResponseError(
-        `Approved response missing Percentile field: "${quote.slice(0, 100)}..."`,
+        `Approved response missing Score field: "${quote.slice(0, 100)}..."`,
         quote
       );
     }
-    score = parseInt(percentileMatch[1], 10);
+    score = parseInt(scoreMatch[1], 10);
     if (score < 0 || score > 100) {
-      throw new MalformedResponseError(`Percentile must be 0-100, got: ${score}`, quote);
+      throw new MalformedResponseError(`Score must be 0-100, got: ${score}`, quote);
     }
   }
 

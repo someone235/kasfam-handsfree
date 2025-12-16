@@ -402,9 +402,9 @@ async function runFullEvaluation(
 
       if (approved) {
         approvedCount++;
-        const qtMatch = quote.match(/QT:\s*(.+?)(?=\nPercentile:|$)/is);
+        const qtMatch = quote.match(/QT:\s*(.+?)(?=\n(?:Score|Percentile):|$)/is);
         const qt = qtMatch ? qtMatch[1].trim() : "";
-        log(`  APPROVED (Percentile: ${score})`);
+        log(`  APPROVED (Score: ${score})`);
         log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
         log(`  QT: ${qt}`);
       } else {

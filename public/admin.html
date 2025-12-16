@@ -298,7 +298,7 @@
         <col /><!-- ID -->
         <col /><!-- Tweet -->
         <col style="min-width: 20%;" /><!-- Quote -->
-        <col /><!-- Percentile -->
+        <col /><!-- Score -->
         <col /><!-- URL -->
         <col /><!-- Model Approved -->
         <col /><!-- Human Decision -->
@@ -312,7 +312,7 @@
           <th>ID</th>
           <th>Tweet</th>
           <th>Quote</th>
-          <th>Percentile</th>
+          <th>Score</th>
           <th>URL</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
@@ -810,7 +810,7 @@
           }
 
           const result = await res.json();
-          alert(`Tweet processed!\nApproved: ${result.approved}\nPercentile: ${result.score ?? "(none)"}\nQuote: ${result.quote || "(none)"}`);
+          alert(`Tweet processed!\nApproved: ${result.approved}\nScore: ${result.score ?? "(none)"}\nQuote: ${result.quote || "(none)"}`);
           fetchTweets();
         } catch (err) {
           console.error(err);

@@ -1,6 +1,6 @@
 export interface FewShotExample {
   tweetText: string;
-  response: string; // The full "Approved.\nQT: ...\nPercentile: X" for GOOD examples
+  response: string; // The full "Approved.\nQT: ...\nScore: X" for GOOD examples
   correction?: string; // The correction "Rejected: reason" for BAD examples
   type: "GOOD" | "BAD";
 }
@@ -58,17 +58,17 @@ if rejecting:
 if approving:
 \`Approved.
 QT: <one or two lines, together ≤20 words>
-Percentile: <0-100, estimating what % of typical approved tweets this is better than>\`
+Score: <0-100, estimating relative quality vs typical approved tweets>\`
 
 no other lines. no commentary. no explanations. no empty lines between.
 
-percentile guidance:
+score guidance:
 - 50 = median quality approved tweet
 - 70-80 = solid, above average
 - 90+ = exceptional, best-of-the-best
 - below 50 = weaker but still worth approving
 
-use the gold examples to calibrate your percentile estimates. be consistent.
+use the gold examples to calibrate your score estimates. be consistent.
 
 qt rules (where your roleplay lives)
 
@@ -138,7 +138,7 @@ Rejected: <one short reason>.
 if approving:
 Approved.
 QT: <one or two lines, together ≤20 words, containing both insight and anchor keywords>
-Percentile: <0-100>
+Score: <0-100>
 `;
 
 export const prompt = basePrompt;
