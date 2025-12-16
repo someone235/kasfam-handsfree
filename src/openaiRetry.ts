@@ -7,7 +7,7 @@ function isRateLimitError(error: unknown): boolean {
   return error instanceof OpenAI.APIError && error.status === 429;
 }
 
-export function isQuotaOrBillingError(error: unknown): boolean {
+function isQuotaOrBillingError(error: unknown): boolean {
   if (!(error instanceof OpenAI.APIError)) {
     return false;
   }

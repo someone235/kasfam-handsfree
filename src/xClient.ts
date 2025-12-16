@@ -167,5 +167,3 @@ export function createXClient(credentials?: OAuth1Credentials): XClientMethods {
     getTweetsByIds,
   };
 }
-
-export type XClient = ReturnType<typeof createXClient>;
