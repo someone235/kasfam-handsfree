@@ -133,7 +133,7 @@ app.post("/api/admin/tweets/:id/process", async (req, res) => {
   try {
     const fewShotExamples = loadFewShotExamples();
 
-    const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
+    const { quote, approved, score } = await askTweetDecision(tweet.text, {
       examples: fewShotExamples,
     });
 
@@ -177,7 +177,7 @@ app.post("/tweets/:id/reeval", async (req, res) => {
   try {
     const fewShotExamples = loadFewShotExamples();
 
-    const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
+    const { quote, approved, score } = await askTweetDecision(tweet.text, {
       examples: fewShotExamples,
     });
 
