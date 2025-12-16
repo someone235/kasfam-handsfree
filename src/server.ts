@@ -9,6 +9,7 @@ import {
   type PaginationOptions,
 } from "./tweetStore.js";
 import { askTweetDecision, MalformedResponseError, type FewShotExample } from "./gptClient.js";
+import { getConversationMemoryMode } from "./conversationMemory.js";
 
 const PORT = Number(process.env.PORT) || 4000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
@@ -133,7 +134,8 @@ app.post("/api/admin/tweets/:id/process", async (req, res) => {
 
   try {
     const fewShotExamples = loadFewShotExamples();
-    const previousResponseId = store.getConfig(RESPONSE_ID_KEY);
+    const memoryMode = getConversationMemoryMode();
+    const previousResponseId = memoryMode === "persist" ? store.getConfig(RESPONSE_ID_KEY) : null;
 
     const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
       examples: fewShotExamples,
@@ -141,7 +143,9 @@ app.post("/api/admin/tweets/:id/process", async (req, res) => {
     });
 
     // Update conversation chain
-    store.setConfig(RESPONSE_ID_KEY, responseId);
+    if (memoryMode === "persist") {
+      store.setConfig(RESPONSE_ID_KEY, responseId);
+    }
 
     store.save({
       id: tweet.id,
@@ -182,7 +186,8 @@ app.post("/tweets/:id/reeval", async (req, res) => {
 
   try {
     const fewShotExamples = loadFewShotExamples();
-    const previousResponseId = store.getConfig(RESPONSE_ID_KEY);
+    const memoryMode = getConversationMemoryMode();
+    const previousResponseId = memoryMode === "persist" ? store.getConfig(RESPONSE_ID_KEY) : null;
 
     const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
       examples: fewShotExamples,
@@ -190,7 +195,9 @@ app.post("/tweets/:id/reeval", async (req, res) => {
     });
 
     // Update conversation chain
-    store.setConfig(RESPONSE_ID_KEY, responseId);
+    if (memoryMode === "persist") {
+      store.setConfig(RESPONSE_ID_KEY, responseId);
+    }
 
     if (!approved) {
       return res.status(500).send("Re-evaluation resulted in rejection");
