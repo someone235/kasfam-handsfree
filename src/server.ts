@@ -1,17 +1,29 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import {
   createTweetStore,
   type HumanDecision,
+  type GoldExampleType,
   type TweetFilters,
   type PaginationOptions,
 } from "./tweetStore.js";
-import { askTweetDecision } from "./gptClient.js";
+import { askTweetDecision, MalformedResponseError, type FewShotExample } from "./gptClient.js";
 
 const PORT = Number(process.env.PORT) || 4000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const app = express();
 const store = createTweetStore();
+
+function loadFewShotExamples(): FewShotExample[] {
+  const goldExamples = store.getGoldExamples();
+  return goldExamples.map((ex) => ({
+    tweetText: ex.text,
+    response: ex.quote,
+    correction: ex.goldExampleCorrection ?? undefined,
+    type: ex.goldExampleType!,
+  }));
+}
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -119,7 +131,11 @@ app.post("/api/admin/tweets/:id/process", async (req, res) => {
   }
 
   try {
-    const { quote, approved, score } = await askTweetDecision(tweet.text);
+    const fewShotExamples = loadFewShotExamples();
+
+    const { quote, approved, score } = await askTweetDecision(tweet.text, {
+      examples: fewShotExamples,
+    });
 
     store.save({
       id: tweet.id,
@@ -132,6 +148,10 @@ app.post("/api/admin/tweets/:id/process", async (req, res) => {
 
     res.json({ success: true, approved, quote, score });
   } catch (error) {
+    if (error instanceof MalformedResponseError) {
+      console.error("Malformed response from model:", error.message);
+      return res.status(500).send(`Malformed AI response: ${error.message}`);
+    }
     console.error("Error processing tweet:", error);
     res.status(500).send("Failed to process tweet through AI model.");
   }
@@ -155,7 +175,11 @@ app.post("/tweets/:id/reeval", async (req, res) => {
   }
 
   try {
-    const { quote, approved, score } = await askTweetDecision(tweet.text);
+    const fewShotExamples = loadFewShotExamples();
+
+    const { quote, approved, score } = await askTweetDecision(tweet.text, {
+      examples: fewShotExamples,
+    });
 
     if (!approved) {
       return res.status(500).send("Re-evaluation resulted in rejection");
@@ -172,17 +196,105 @@ app.post("/tweets/:id/reeval", async (req, res) => {
 
     const updatedTweet = store.get(tweet.id);
     if (!updatedTweet) {
-      return res
-        .status(500)
-        .send("Failed to load updated tweet after re-evaluation.");
+      return res.status(500).send("Failed to load updated tweet after re-evaluation.");
     }
 
     res.json(updatedTweet);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown re-evaluation error";
+    if (error instanceof MalformedResponseError) {
+      return res.status(500).send(`Malformed AI response: ${error.message}`);
+    }
+    const message = error instanceof Error ? error.message : "Unknown re-evaluation error";
     res.status(500).send(`Failed to re-evaluate tweet: ${message}`);
   }
+});
+
+// Set gold example status for a tweet
+app.post("/api/admin/tweets/:id/gold-example", (req, res) => {
+  const { type, password, correction } = req.body as {
+    type?: string;
+    password?: string;
+    correction?: string;
+  };
+
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const normalized = normalizeGoldExampleType(type);
+  if (type && !normalized) {
+    return res.status(400).send("Invalid type. Use GOOD, BAD, or omit to clear.");
+  }
+
+  // BAD examples require a correction (the rejection reason)
+  if (normalized === "BAD" && !correction) {
+    return res.status(400).send("BAD examples require a correction (rejection reason).");
+  }
+
+  const tweet = store.get(req.params.id);
+  if (!tweet) {
+    return res.status(404).send("Tweet not found.");
+  }
+
+  // Only store correction for BAD examples, clear it otherwise
+  const correctionToStore = normalized === "BAD" ? correction : null;
+  store.setGoldExample(req.params.id, normalized, correctionToStore);
+  res.json({
+    success: true,
+    goldExampleType: normalized,
+    goldExampleCorrection: correctionToStore,
+  });
+});
+
+// Get gold example counts (public)
+app.get("/api/gold-examples/counts", (_req, res) => {
+  const goodExamples = store.getGoldExamples("GOOD");
+  const badExamples = store.getGoldExamples("BAD");
+
+  res.json({
+    good: goodExamples.length,
+    bad: badExamples.length,
+    maxPerType: 5,
+    oldestGood: goodExamples.length > 0 ? goodExamples[goodExamples.length - 1]?.updatedAt : null,
+    oldestBad: badExamples.length > 0 ? badExamples[badExamples.length - 1]?.updatedAt : null,
+  });
+});
+
+// Get gold example counts (admin - same as public for now)
+app.get("/api/admin/gold-examples/counts", (req, res) => {
+  const password = req.query.password as string;
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const goodExamples = store.getGoldExamples("GOOD");
+  const badExamples = store.getGoldExamples("BAD");
+
+  res.json({
+    good: goodExamples.length,
+    bad: badExamples.length,
+    maxPerType: 5,
+    oldestGood: goodExamples.length > 0 ? goodExamples[goodExamples.length - 1]?.updatedAt : null,
+    oldestBad: badExamples.length > 0 ? badExamples[badExamples.length - 1]?.updatedAt : null,
+  });
+});
+
+// Get all gold examples
+app.get("/api/admin/gold-examples", (req, res) => {
+  const password = req.query.password as string;
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const type = req.query.type as string | undefined;
+  const normalized = type ? normalizeGoldExampleType(type) : undefined;
+
+  if (type && !normalized) {
+    return res.status(400).send("Invalid type. Use GOOD or BAD.");
+  }
+
+  const examples = store.getGoldExamples(normalized ?? undefined);
+  res.json({ data: examples });
 });
 
 app.listen(PORT, () => {
@@ -198,19 +310,17 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
-type FilterParseResult = {
+interface FilterParseResult {
   filters: TweetFilters;
   pagination: PaginationOptions;
-};
+}
 
 function parseFilters(query: any): FilterParseResult {
-  const approvedParam =
-    typeof query.approved === "string" ? query.approved : "all";
-  const humanParam =
-    typeof query.humanDecision === "string" ? query.humanDecision : "all";
+  const approvedParam = typeof query.approved === "string" ? query.approved : "all";
+  const humanParam = typeof query.humanDecision === "string" ? query.humanDecision : "all";
+  const goldParam = typeof query.goldExample === "string" ? query.goldExample : "all";
   const pageParam = typeof query.page === "string" ? query.page : undefined;
-  const pageSizeParam =
-    typeof query.pageSize === "string" ? query.pageSize : undefined;
+  const pageSizeParam = typeof query.pageSize === "string" ? query.pageSize : undefined;
 
   const filters: TweetFilters = {};
 
@@ -220,20 +330,28 @@ function parseFilters(query: any): FilterParseResult {
     filters.hasModelDecision = false;
   }
 
-  if (
-    humanParam === "APPROVED" ||
-    humanParam === "REJECTED" ||
-    humanParam === "UNSET"
-  ) {
+  if (humanParam === "APPROVED" || humanParam === "REJECTED" || humanParam === "UNSET") {
     filters.humanDecision = humanParam as TweetFilters["humanDecision"];
+  }
+
+  if (goldParam === "GOOD" || goldParam === "BAD") {
+    filters.goldExampleType = goldParam as TweetFilters["goldExampleType"];
+  } else if (goldParam === "ANY") {
+    filters.hasGoldExample = true;
+  } else if (goldParam === "NONE") {
+    filters.hasGoldExample = false;
   }
 
   const pagination: PaginationOptions = {};
   const parsedPage = parsePositiveInteger(pageParam);
   const parsedPageSize = parsePositiveInteger(pageSizeParam);
 
-  if (parsedPage) pagination.page = parsedPage;
-  if (parsedPageSize) pagination.pageSize = parsedPageSize;
+  if (parsedPage) {
+    pagination.page = parsedPage;
+  }
+  if (parsedPageSize) {
+    pagination.pageSize = parsedPageSize;
+  }
 
   return { filters, pagination };
 }
@@ -245,8 +363,17 @@ function normalizeDecision(value?: string): HumanDecision | null {
   return null;
 }
 
+function normalizeGoldExampleType(value?: string): GoldExampleType | null {
+  if (value === "GOOD" || value === "BAD") {
+    return value;
+  }
+  return null;
+}
+
 function parsePositiveInteger(value?: string): number | null {
-  if (!value) return null;
+  if (!value) {
+    return null;
+  }
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return null;

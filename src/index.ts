@@ -1,41 +1,45 @@
-import { askTweetDecision } from "./gptClient.js";
+import "dotenv/config";
+import {
+  askTweetDecision,
+  quickFilterTweet,
+  MalformedResponseError,
+  type FewShotExample,
+} from "./gptClient.js";
 import { createTweetStore, type TweetDecisionInput, type TweetRawInput } from "./tweetStore.js";
+import { createXClient } from "./xClient.js";
 
-type Tweet = {
+interface Tweet {
   id: string;
   text: string;
   url: string;
   author: {
     username: string;
   };
-};
+}
+
+type TweetSource = "kaspa-news" | "x-api" | "both";
 
 type TweetStore = ReturnType<typeof createTweetStore>;
 
-async function getKaspaTweets(limit?: number, tweetIds?: string[]): Promise<Tweet[]> {
+interface Round1Result {
+  tweet: Tweet;
+  approved: boolean;
+  rejectionReason?: string;
+}
+
+function log(msg: string): void {
+  console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
+}
+
+async function getKaspaNewsFeed(limit?: number): Promise<Tweet[]> {
   const res = await fetch("https://kaspa.news/api/kaspa-tweets", {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) {
-    throw new Error(
-      `Failed to fetch kaspa tweets: ${res.status} ${res.statusText}`
-    );
+    throw new Error(`Failed to fetch kaspa tweets: ${res.status} ${res.statusText}`);
   }
   const response = await res.json();
   const allTweets = response.tweets ?? [];
-
-  // filter by tweet ids if specified
-  if (tweetIds !== undefined && tweetIds.length > 0) {
-    const tweets = allTweets.filter((t: Tweet) => tweetIds.includes(t.id));
-    const foundIds = tweets.map((t: Tweet) => t.id);
-    const notFoundIds = tweetIds.filter(id => !foundIds.includes(id));
-
-    if (notFoundIds.length > 0) {
-      throw new Error(`Tweet ID(s) not found: ${notFoundIds.join(', ')}`);
-    }
-
-    return tweets;
-  }
 
   // apply client-side limiting if specified
   if (limit !== undefined && limit > 0) {
@@ -45,43 +49,219 @@ async function getKaspaTweets(limit?: number, tweetIds?: string[]): Promise<Twee
   return allTweets;
 }
 
-function log(msg: string) {
-  console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
+// Returns { found, notFound } - does not throw on missing IDs
+async function findTweetsInKaspaNews(
+  tweetIds: string[]
+): Promise<{ found: Tweet[]; notFound: string[] }> {
+  const res = await fetch("https://kaspa.news/api/kaspa-tweets", {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch kaspa tweets: ${res.status} ${res.statusText}`);
+  }
+  const response = await res.json();
+  const allTweets = response.tweets ?? [];
+
+  const found = allTweets.filter((t: Tweet) => tweetIds.includes(t.id));
+  const foundIds = found.map((t: Tweet) => t.id);
+  const notFound = tweetIds.filter((id) => !foundIds.includes(id));
+
+  return { found, notFound };
 }
 
-type ParsedArgs = {
+async function getXApiFeed(limit?: number): Promise<Tweet[]> {
+  const client = createXClient();
+  return await client.searchTweets(limit !== undefined ? { maxResults: limit } : undefined);
+}
+
+async function getXApiTweetsByIds(tweetIds: string[]): Promise<Tweet[]> {
+  const client = createXClient();
+  return await client.getTweetsByIds(tweetIds);
+}
+
+// Fetch tweets by specific IDs based on source preference
+async function getTweetsByIds(source: TweetSource, tweetIds: string[]): Promise<Tweet[]> {
+  if (source === "kaspa-news") {
+    // kaspa-news only: error if not found
+    const { found, notFound } = await findTweetsInKaspaNews(tweetIds);
+    if (notFound.length > 0) {
+      throw new Error(`Tweet ID(s) not found in kaspa.news: ${notFound.join(", ")}`);
+    }
+    log(`Found ${found.length} tweets in kaspa.news`);
+    return found;
+  }
+
+  if (source === "x-api") {
+    // X API only: fetch directly by ID
+    const tweets = await getXApiTweetsByIds(tweetIds);
+    log(`Fetched ${tweets.length} tweets from X API`);
+    if (tweets.length < tweetIds.length) {
+      const foundIds = tweets.map((t) => t.id);
+      const notFound = tweetIds.filter((id) => !foundIds.includes(id));
+      throw new Error(`Tweet ID(s) not found in X API: ${notFound.join(", ")}`);
+    }
+    return tweets;
+  }
+
+  // source === "both": try kaspa.news first, fallback to X API for missing
+  const { found, notFound } = await findTweetsInKaspaNews(tweetIds);
+  if (found.length > 0) {
+    log(`Found ${found.length} tweets in kaspa.news`);
+  }
+
+  if (notFound.length > 0) {
+    log(`${notFound.length} tweets not in kaspa.news, checking X API...`);
+    try {
+      const xApiTweets = await getXApiTweetsByIds(notFound);
+      log(`Fetched ${xApiTweets.length} tweets from X API`);
+      found.push(...xApiTweets);
+
+      // Check if any are still missing
+      const allFoundIds = found.map((t) => t.id);
+      const stillMissing = tweetIds.filter((id) => !allFoundIds.includes(id));
+      if (stillMissing.length > 0) {
+        throw new Error(`Tweet ID(s) not found in any source: ${stillMissing.join(", ")}`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("not found")) {
+        throw error;
+      }
+      throw new Error(`Failed to fetch from X API: ${error}`);
+    }
+  }
+
+  return found;
+}
+
+// Fetch tweets from feed (no specific IDs)
+async function getTweetsFeed(source: TweetSource, limit?: number): Promise<Tweet[]> {
+  const tweets: Tweet[] = [];
+  const seenIds = new Set<string>();
+
+  const addTweets = (newTweets: Tweet[]): void => {
+    for (const tweet of newTweets) {
+      if (!seenIds.has(tweet.id)) {
+        seenIds.add(tweet.id);
+        tweets.push(tweet);
+      }
+    }
+  };
+
+  if (source === "kaspa-news" || source === "both") {
+    try {
+      const kaspaNewsTweets = await getKaspaNewsFeed();
+      log(`Fetched ${kaspaNewsTweets.length} tweets from kaspa.news`);
+      addTweets(kaspaNewsTweets);
+    } catch (error) {
+      if (source === "both") {
+        console.warn(`Warning: Failed to fetch from kaspa.news: ${error}`);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  if (source === "x-api" || source === "both") {
+    try {
+      const xApiLimit =
+        source === "both" && limit !== undefined ? Math.max(0, limit - tweets.length) : limit;
+      const xApiTweets = await getXApiFeed(xApiLimit);
+      log(`Fetched ${xApiTweets.length} tweets from X API`);
+      addTweets(xApiTweets);
+    } catch (error) {
+      if (source === "both") {
+        console.warn(`Warning: Failed to fetch from X API: ${error}`);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  // If using both sources and got nothing, that's an error
+  if (source === "both" && tweets.length === 0) {
+    throw new Error("Failed to fetch tweets from any source");
+  }
+
+  log(`Total unique tweets: ${tweets.length}`);
+
+  // Apply limit after combining all sources
+  if (limit !== undefined && limit > 0 && tweets.length > limit) {
+    log(`Limiting to ${limit} tweets`);
+    return tweets.slice(0, limit);
+  }
+
+  return tweets;
+}
+
+async function getTweets(
+  source: TweetSource,
+  limit?: number,
+  tweetIds?: string[]
+): Promise<Tweet[]> {
+  // If specific tweet IDs requested, use ID-based lookup
+  if (tweetIds !== undefined && tweetIds.length > 0) {
+    return getTweetsByIds(source, tweetIds);
+  }
+
+  // Otherwise fetch from feed
+  return getTweetsFeed(source, limit);
+}
+
+interface ParsedArgs {
+  source: TweetSource;
   limit: number | undefined;
   tweetIds: string[] | undefined;
-};
+}
+
+function getDefaultSource(): TweetSource {
+  const envSource = process.env.DEFAULT_SOURCE;
+  if (envSource === "kaspa-news" || envSource === "x-api" || envSource === "both") {
+    return envSource;
+  }
+  return "kaspa-news";
+}
 
 function extractArguments(args: string[]): ParsedArgs {
-  // how many tweets to send through to gpt for 'processing', default to no limit (all tweets)
+  let source: TweetSource = getDefaultSource();
   let limit: number | undefined = undefined;
   let tweetIds: string[] | undefined = undefined;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--limit') {
+    if (args[i] === "--source") {
       if (i + 1 >= args.length) {
-        throw new Error('--limit requires a value');
+        throw new Error("--source requires a value");
+      }
+      const value = args[i + 1];
+      if (value === "kaspa-news" || value === "x-api" || value === "both") {
+        source = value;
+      } else {
+        throw new Error(`Invalid source: ${value}. Use: kaspa-news, x-api, or both`);
+      }
+      i++;
+    } else if (args[i] === "--limit") {
+      if (i + 1 >= args.length) {
+        throw new Error("--limit requires a value");
       }
       limit = parseInt(args[i + 1], 10);
       i++;
-    } else if (args[i] === '--tweet-id') {
+    } else if (args[i] === "--tweet-id") {
       if (i + 1 >= args.length) {
-        throw new Error('--tweet-id requires a value');
+        throw new Error("--tweet-id requires a value");
       }
-
-      tweetIds = args[i + 1].split(',').map(id => id.trim()).filter(id => id.length > 0);
+      tweetIds = args[i + 1]
+        .split(",")
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0);
       i++;
-    } else if (args[i].startsWith('--')) {
+    } else if (args[i].startsWith("--")) {
       throw new Error(`Unknown argument: ${args[i]}`);
-    } else if (i === 0 || !args[i - 1].startsWith('--')) {
+    } else if (i === 0 || !args[i - 1].startsWith("--")) {
       // standalone value that's not following a flag
       throw new Error(`Unexpected argument: ${args[i]}`);
     }
   }
 
-  return { limit, tweetIds };
+  return { source, limit, tweetIds };
 }
 
 function validateArguments(parsed: ParsedArgs): void {
@@ -93,18 +273,20 @@ function validateArguments(parsed: ParsedArgs): void {
 
   if (parsed.tweetIds !== undefined) {
     if (parsed.tweetIds.length === 0) {
-      throw new Error('--tweet-id cannot be empty');
+      throw new Error("--tweet-id cannot be empty");
     }
     for (const id of parsed.tweetIds) {
-      if (id.trim() === '') {
-        throw new Error('--tweet-id contains empty values');
+      if (id.trim() === "") {
+        throw new Error("--tweet-id contains empty values");
       }
     }
   }
 
   // warn if both limit and tweetIds are provided (tweetIds takes precedence)
   if (parsed.limit !== undefined && parsed.tweetIds !== undefined) {
-    console.warn('Warning: both --limit and --tweet-id provided. --tweet-id takes precedence, --limit will be ignored.');
+    console.warn(
+      "Warning: both --limit and --tweet-id provided. --tweet-id takes precedence, --limit will be ignored."
+    );
   }
 }
 
@@ -115,13 +297,143 @@ function parseArgs(): ParsedArgs {
   return parsed;
 }
 
-async function main() {
-  const { limit, tweetIds } = parseArgs();
+function loadFewShotExamples(store: TweetStore): FewShotExample[] {
+  const goldExamples = store.getGoldExamples();
+  return goldExamples.map((ex) => ({
+    tweetText: ex.text,
+    response: ex.quote,
+    correction: ex.goldExampleCorrection ?? undefined,
+    type: ex.goldExampleType!,
+  }));
+}
+
+interface Round1Stats {
+  results: Round1Result[];
+  rejectedCount: number;
+}
+
+async function runQuickFilter(tweets: Tweet[], store: TweetStore): Promise<Round1Stats> {
+  log(`\n=== ROUND 1: Quick Filter ===`);
+  const results: Round1Result[] = [];
+  let rejectedCount = 0;
+
+  for (let i = 0; i < tweets.length; i++) {
+    const tweet = tweets[i];
+    log(`[${i + 1}/${tweets.length}] Quick filter...`);
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+    try {
+      const result = await quickFilterTweet(tweet.text);
+      results.push({
+        tweet,
+        approved: result.approved,
+        rejectionReason: result.rejectionReason,
+      });
+
+      if (!result.approved) {
+        rejectedCount++;
+        const payload: TweetDecisionInput = {
+          id: tweet.id,
+          text: tweet.text,
+          url: tweet.url,
+          quote: `Rejected: ${result.rejectionReason ?? "quick filter"}`,
+          approved: false,
+          score: 0,
+        };
+        store.save(payload);
+        log(`  REJECTED (R1): ${result.rejectionReason ?? "quick filter"}`);
+      } else {
+        log(`  PASSED -> Round 2`);
+      }
+    } catch (error) {
+      if (error instanceof MalformedResponseError) {
+        log(`  MALFORMED (R1): ${error.message} - passing to Round 2`);
+        results.push({ tweet, approved: true });
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return { results, rejectedCount };
+}
+
+interface Round2Stats {
+  approvedCount: number;
+  rejectedCount: number;
+  skippedCount: number;
+}
+
+async function runFullEvaluation(
+  passedTweets: Round1Result[],
+  store: TweetStore,
+  fewShotExamples: FewShotExample[]
+): Promise<Round2Stats> {
+  log(`\n=== ROUND 2: Full Evaluation (${passedTweets.length} tweets) ===`);
+
+  let approvedCount = 0;
+  let rejectedCount = 0;
+  let skippedCount = 0;
+
+  for (let i = 0; i < passedTweets.length; i++) {
+    const { tweet } = passedTweets[i];
+    log(`\n[${i + 1}/${passedTweets.length}] Full evaluation...`);
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+
+    try {
+      const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
+        examples: fewShotExamples,
+      });
+
+      log(`  [response: ${responseId.slice(-8)}]`);
+
+      const payload: TweetDecisionInput = {
+        id: tweet.id,
+        text: tweet.text,
+        url: tweet.url,
+        quote: quote ?? "",
+        approved,
+        score,
+      };
+
+      store.save(payload);
+
+      if (approved) {
+        approvedCount++;
+        const qtMatch = quote.match(/QT:\s*(.+?)(?=\n(?:Score|Percentile):|$)/is);
+        const qt = qtMatch ? qtMatch[1].trim() : "";
+        log(`  APPROVED (Score: ${score})`);
+        log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
+        log(`  QT: ${qt}`);
+      } else {
+        rejectedCount++;
+        log(`  REJECTED (R2): ${quote}`);
+        log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
+      }
+    } catch (error) {
+      if (error instanceof MalformedResponseError) {
+        skippedCount++;
+        log(`  MALFORMED (R2): ${error.message}`);
+        log(`  Raw: ${error.rawResponse.slice(0, 100)}...`);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return { approvedCount, rejectedCount, skippedCount };
+}
+
+async function main(): Promise<void> {
+  const { source, limit, tweetIds } = parseArgs();
+  log(`Using source: ${source}`);
 
   let store: TweetStore | null = null;
   try {
     store = createTweetStore();
-    const tweets = await getKaspaTweets(limit, tweetIds);
+    const tweets = await getTweets(source, limit, tweetIds);
 
     // save all tweets to db first (without model decision)
     for (const tweet of tweets) {
@@ -134,50 +446,62 @@ async function main() {
     }
     log(`Saved ${tweets.length} tweets to database`);
 
-    for (let i = 0; i < tweets.length; i++) {
-      const tweet = tweets[i];
-      log(`Reading tweet ${i + 1} of ${tweets.length}`);
+    // load gold examples for few-shot learning
+    const fewShotExamples = loadFewShotExamples(store);
+    if (fewShotExamples.length > 0) {
+      log(`Loaded ${fewShotExamples.length} gold examples for few-shot learning`);
+    }
 
-      if (tweet.author.username == "kaspaunchained") {
-        log(`Skipping self-tweet`);
+    // Filter tweets that need processing
+    const tweetsToProcess: Tweet[] = [];
+    for (const tweet of tweets) {
+      if (tweet.author.username === "kaspaunchained") {
+        log(`Skipping self-tweet: ${tweet.id}`);
         continue;
       }
-
       if (store.hasModelDecision(tweet.id)) {
         log(`Skipping tweet ${tweet.id} (already has model decision)`);
         continue;
       }
-
-      log(`Sending question to GPT-5.1...`);
-      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-      const { quote, approved, score } = await askTweetDecision(tweet.text);
-
-      const payload: TweetDecisionInput = {
-        ...tweet,
-        quote: quote ?? "",
-        approved,
-        score,
-      };
-
-      store.save(payload);
-
-      if (!approved) {
-        continue;
-      }
-
-      log(`Question: ${tweet.text}`);
-
-      log(`Approved status: ${approved}`);
-
-      if (!quote) {
-        console.warn("No textual output returned by the model.");
-        process.exitCode = 2;
-        return;
-      }
-
-      log("=== GPT-5.1 Response ===");
-      log(quote);
+      tweetsToProcess.push(tweet);
     }
+
+    if (tweetsToProcess.length === 0) {
+      log("No new tweets to process.");
+      return;
+    }
+
+    log(`Found ${tweetsToProcess.length} tweets needing evaluation`);
+
+    // Run two-round evaluation
+    const { results: round1Results, rejectedCount: round1Rejected } = await runQuickFilter(
+      tweetsToProcess,
+      store
+    );
+
+    const passedRound1 = round1Results.filter((r) => r.approved);
+    log(`\nRound 1 complete: ${passedRound1.length} passed, ${round1Rejected} rejected`);
+
+    if (passedRound1.length === 0) {
+      log("No tweets passed Round 1. Done.");
+      log(`\n--- Summary ---`);
+      log(`Round 1: ${tweetsToProcess.length} evaluated, ${round1Rejected} rejected`);
+      log(`Final: 0 approved | ${round1Rejected} rejected`);
+      return;
+    }
+
+    const round2Stats = await runFullEvaluation(passedRound1, store, fewShotExamples);
+
+    // Final summary
+    const totalRejected = round1Rejected + round2Stats.rejectedCount;
+    log(`\n--- Summary ---`);
+    log(
+      `Round 1: ${tweetsToProcess.length} evaluated, ${passedRound1.length} passed, ${round1Rejected} rejected`
+    );
+    log(
+      `Round 2: ${passedRound1.length} evaluated, ${round2Stats.approvedCount} approved, ${round2Stats.rejectedCount} rejected${round2Stats.skippedCount > 0 ? `, ${round2Stats.skippedCount} skipped` : ""}`
+    );
+    log(`Final: ${round2Stats.approvedCount} approved | ${totalRejected} rejected`);
   } catch (error) {
     if (error instanceof Error) {
       console.error(`Error: ${error.message}`);
