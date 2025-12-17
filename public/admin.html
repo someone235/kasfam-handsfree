@@ -299,9 +299,8 @@
       </label>
       <button id="id-search-btn" type="button" class="mode-hidden">Search</button>
       <button id="refresh-btn">Refresh</button>
-      <button id="mode-toggle-btn" class="btn-secondary">Switch to ID Search</button>
       <span id="loading">Loading...</span>
-      <span id="gold-counts" style="margin-left: 1rem; color: #94a3b8; font-size: 0.9em;"></span>
+      <span id="gold-counts" style="margin-left: 1rem; color: #94a3b8; font-size: 0.9em;" class="mode-hidden"></span>
     </div>
 
     <div style="margin-top: 1rem; margin-bottom: 1rem">
@@ -313,6 +312,7 @@
           placeholder="Enter password"
         />
       </label>
+      <button id="mode-toggle-btn" class="btn-secondary" style="margin-left: 1rem;">ID Search</button>
     </div>
 
     <table>
@@ -490,7 +490,8 @@
         if (idSearchBtn) idSearchBtn.classList.toggle("mode-hidden", !filterSearchEnabled);
         if (standardFilters) standardFilters.classList.toggle("mode-hidden", filterSearchEnabled);
         if (refreshBtn) refreshBtn.classList.toggle("mode-hidden", filterSearchEnabled);
-        modeToggleBtn.textContent = filterSearchEnabled ? "Switch to Standard Filters" : "Switch to ID Search";
+        if (goldCountsDisplay) goldCountsDisplay.classList.toggle("mode-hidden", filterSearchEnabled);
+        modeToggleBtn.textContent = filterSearchEnabled ? "Back to Standard Filters" : "ID Search";
       }
 
       function setSelectFromParam(selectEl, value) {
