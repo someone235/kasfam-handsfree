@@ -499,6 +499,19 @@
         }
       }
 
+      function getFrequencyTooltip(freq) {
+        if (!freq) return "Fresh: No posting history";
+        const { postsLast7Days, postsLast30Days, frequencyState } = freq;
+        const stateLabels = {
+          fresh: "Fresh: No approved posts yet",
+          healthy: "Healthy: Normal posting frequency",
+          warm: "Warm: 3+ posts in 30 days - consider variety",
+          hot: "Hot: 2+ posts in 7 days - author is overexposed"
+        };
+        const label = stateLabels[frequencyState] || "Unknown";
+        return `${label}\n(${postsLast7Days} in 7d, ${postsLast30Days} in 30d)`;
+      }
+
       function updateModeVisibility() {
         if (idSearchSection) idSearchSection.classList.toggle("mode-hidden", !filterSearchEnabled);
         if (idSearchBtn) idSearchBtn.classList.toggle("mode-hidden", !filterSearchEnabled);
@@ -681,7 +694,7 @@
             <td>${escapeHtml(tweet.id)}</td>
             <td>
               <span class="freq-dot freq-${escapeHtml(tweet.authorFrequency?.frequencyState || 'fresh')}" 
-                    title="${tweet.authorFrequency?.postsLast7Days || 0} posts (7d), ${tweet.authorFrequency?.postsLast30Days || 0} posts (30d)"></span>
+                    title="${getFrequencyTooltip(tweet.authorFrequency)}"></span>
               <div class="cell-content" data-content-type="tweet" style="display: inline;">${escapeHtml(tweet.text)}</div>
               <span class="expand-toggle" data-target="tweet" style="display: none;">Show more</span>
             </td>
