@@ -72,10 +72,17 @@ app.get("/api/admin/tweets", (req, res) => {
   const { filters, pagination } = parseFilters(req.query);
   const { tweets, total, page, pageSize } = store.list(filters, pagination);
 
-  const responseData = tweets.map((t) => ({
-    ...t,
-    quote: authorized || t.approved ? t.quote : "",
-  }));
+  const responseData = tweets.map((t) => {
+    const authorFrequency = t.authorUsername
+      ? store.getAuthorFrequency(t.authorUsername)
+      : { postsLast7Days: 0, postsLast30Days: 0, frequencyState: "fresh" as const };
+
+    return {
+      ...t,
+      quote: authorized || t.approved ? t.quote : "",
+      authorFrequency,
+    };
+  });
 
   const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
 

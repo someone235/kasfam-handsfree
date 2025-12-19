@@ -441,6 +441,7 @@ async function main(): Promise<void> {
         id: tweet.id,
         text: tweet.text,
         url: tweet.url,
+        authorUsername: tweet.author.username,
       };
       store.saveRaw(rawInput);
     }
