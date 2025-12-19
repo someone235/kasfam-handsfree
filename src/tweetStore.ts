@@ -331,7 +331,7 @@ export function createTweetStore() {
           `
         SELECT COUNT(*) as cnt FROM tweets
         WHERE authorUsername = @authorUsername
-          AND (approved = 1 OR humanDecision = 'APPROVED')
+          AND humanDecision = 'APPROVED'
           AND datetime(COALESCE(updatedAt, createdAt)) >= datetime('now', '-7 days')
       `
         )
@@ -342,7 +342,7 @@ export function createTweetStore() {
           `
         SELECT COUNT(*) as cnt FROM tweets
         WHERE authorUsername = @authorUsername
-          AND (approved = 1 OR humanDecision = 'APPROVED')
+          AND humanDecision = 'APPROVED'
           AND datetime(COALESCE(updatedAt, createdAt)) >= datetime('now', '-30 days')
       `
         )
