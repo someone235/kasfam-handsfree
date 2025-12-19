@@ -8,7 +8,7 @@
 import "dotenv/config";
 import Database from "better-sqlite3";
 import path from "path";
-import { createXClient } from "../src/xClient.js";
+import { createXClient } from "../dist/xClient.js";
 
 const DB_PATH = process.env.SQLITE_DB_PATH || "data/app.db";
 const KASPA_NEWS_URL = "https://kaspa.news/api/kaspa-tweets";
