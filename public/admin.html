@@ -253,6 +253,20 @@
         background: #3b82f6;
         border-color: #2563eb;
       }
+      /* Frequency indicator */
+      .freq-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: middle;
+        cursor: help;
+      }
+      .freq-fresh { background: #94a3b8; }
+      .freq-healthy { background: #22c55e; }
+      .freq-warm { background: #f59e0b; }
+      .freq-hot { background: #ef4444; }
     </style>
   </head>
   <body>
@@ -666,7 +680,9 @@
             <tr data-approved="${approvedAttr}" data-human-decision="${escapeHtml(decisionValue || "UNSET")}" data-gold-example-type="${escapeHtml(tweet.goldExampleType || "")}">
             <td>${escapeHtml(tweet.id)}</td>
             <td>
-              <div class="cell-content" data-content-type="tweet">${escapeHtml(tweet.text)}</div>
+              <span class="freq-dot freq-${escapeHtml(tweet.authorFrequency?.frequencyState || 'fresh')}" 
+                    title="${tweet.authorFrequency?.postsLast7Days || 0} posts (7d), ${tweet.authorFrequency?.postsLast30Days || 0} posts (30d)"></span>
+              <div class="cell-content" data-content-type="tweet" style="display: inline;">${escapeHtml(tweet.text)}</div>
               <span class="expand-toggle" data-target="tweet" style="display: none;">Show more</span>
             </td>
             <td class="quote">

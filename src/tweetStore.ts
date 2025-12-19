@@ -6,6 +6,14 @@ import { applyMigrations } from "./migrations.js";
 export type HumanDecision = "APPROVED" | "REJECTED";
 export type GoldExampleType = "GOOD" | "BAD";
 
+export type FrequencyState = "fresh" | "healthy" | "warm" | "hot";
+
+export interface AuthorFrequency {
+  postsLast7Days: number;
+  postsLast30Days: number;
+  frequencyState: FrequencyState;
+}
+
 export interface TweetRecord {
   id: string;
   text: string;
@@ -18,12 +26,14 @@ export interface TweetRecord {
   humanDecision: HumanDecision | null;
   goldExampleType: GoldExampleType | null;
   goldExampleCorrection: string | null;
+  authorUsername: string | null;
 }
 
 export interface TweetRawInput {
   id: string;
   text: string;
   url: string;
+  authorUsername?: string;
 }
 
 export interface TweetDecisionInput {
@@ -73,6 +83,24 @@ function initDb(): SqliteDatabase {
   return db;
 }
 
+function extractAuthorFromUrl(url: string): string | null {
+  const match = url.match(/x\.com\/([^/]+)\/status/);
+  return match?.[1] ?? null;
+}
+
+function computeFrequencyState(postsLast7Days: number, postsLast30Days: number): FrequencyState {
+  if (postsLast7Days === 0 && postsLast30Days === 0) {
+    return "fresh";
+  }
+  if (postsLast7Days >= 2) {
+    return "hot";
+  }
+  if (postsLast30Days >= 3) {
+    return "warm";
+  }
+  return "healthy";
+}
+
 export function createTweetStore() {
   const db = initDb();
 
@@ -89,16 +117,18 @@ export function createTweetStore() {
   `);
 
   const insertRaw = db.prepare(`
-    INSERT INTO tweets (id, text, url)
-    VALUES (@id, @text, @url)
+    INSERT INTO tweets (id, text, url, authorUsername)
+    VALUES (@id, @text, @url, @authorUsername)
     ON CONFLICT(id) DO UPDATE SET
       text = excluded.text,
-      url = excluded.url
+      url = excluded.url,
+      authorUsername = COALESCE(excluded.authorUsername, tweets.authorUsername)
   `);
 
   return {
     saveRaw(tweet: TweetRawInput) {
-      insertRaw.run(tweet);
+      const authorUsername = tweet.authorUsername ?? extractAuthorFromUrl(tweet.url);
+      insertRaw.run({ ...tweet, authorUsername });
     },
     save(decision: TweetDecisionInput) {
       upsertWithDecision.run({
@@ -144,7 +174,7 @@ export function createTweetStore() {
       `;
 
       const sql = `
-        SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection
+        SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection, authorUsername
         ${baseQuery}
         ORDER BY datetime(COALESCE(updatedAt, createdAt)) DESC
         LIMIT @limit OFFSET @offset
@@ -166,6 +196,7 @@ export function createTweetStore() {
         humanDecision: HumanDecision | null;
         goldExampleType: GoldExampleType | null;
         goldExampleCorrection: string | null;
+        authorUsername: string | null;
       }[];
 
       const totalRow = db.prepare(`SELECT COUNT(*) as total ${baseQuery}`).get(params) as {
@@ -180,6 +211,7 @@ export function createTweetStore() {
         humanDecision: row.humanDecision ?? null,
         goldExampleType: row.goldExampleType ?? null,
         goldExampleCorrection: row.goldExampleCorrection ?? null,
+        authorUsername: row.authorUsername ?? null,
       }));
 
       return {
@@ -193,7 +225,7 @@ export function createTweetStore() {
       const row = db
         .prepare(
           `
-        SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection
+        SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection, authorUsername
         FROM tweets
         WHERE id = @id
       `
@@ -211,6 +243,7 @@ export function createTweetStore() {
             humanDecision: HumanDecision | null;
             goldExampleType: GoldExampleType | null;
             goldExampleCorrection: string | null;
+            authorUsername: string | null;
           }
         | undefined;
 
@@ -226,6 +259,7 @@ export function createTweetStore() {
         humanDecision: row.humanDecision ?? null,
         goldExampleType: row.goldExampleType ?? null,
         goldExampleCorrection: row.goldExampleCorrection ?? null,
+        authorUsername: row.authorUsername ?? null,
       };
     },
     updateHumanDecision(id: string, decision: HumanDecision | null) {
@@ -260,9 +294,9 @@ export function createTweetStore() {
     },
     getGoldExamples(type?: GoldExampleType): TweetRecord[] {
       const sql = type
-        ? `SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection
+        ? `SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection, authorUsername
            FROM tweets WHERE goldExampleType = @type ORDER BY updatedAt DESC`
-        : `SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection
+        : `SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection, authorUsername
            FROM tweets WHERE goldExampleType IS NOT NULL ORDER BY goldExampleType, updatedAt DESC`;
 
       const rows = db.prepare(sql).all(type ? { type } : {}) as {
@@ -277,6 +311,7 @@ export function createTweetStore() {
         humanDecision: HumanDecision | null;
         goldExampleType: GoldExampleType | null;
         goldExampleCorrection: string | null;
+        authorUsername: string | null;
       }[];
 
       return rows.map((row) => ({
@@ -287,7 +322,40 @@ export function createTweetStore() {
         humanDecision: row.humanDecision ?? null,
         goldExampleType: row.goldExampleType ?? null,
         goldExampleCorrection: row.goldExampleCorrection ?? null,
+        authorUsername: row.authorUsername ?? null,
       }));
+    },
+    getAuthorFrequency(authorUsername: string): AuthorFrequency {
+      const now7 = db
+        .prepare(
+          `
+        SELECT COUNT(*) as cnt FROM tweets
+        WHERE authorUsername = @authorUsername
+          AND (approved = 1 OR humanDecision = 'APPROVED')
+          AND datetime(COALESCE(updatedAt, createdAt)) >= datetime('now', '-7 days')
+      `
+        )
+        .get({ authorUsername }) as { cnt: number };
+
+      const now30 = db
+        .prepare(
+          `
+        SELECT COUNT(*) as cnt FROM tweets
+        WHERE authorUsername = @authorUsername
+          AND (approved = 1 OR humanDecision = 'APPROVED')
+          AND datetime(COALESCE(updatedAt, createdAt)) >= datetime('now', '-30 days')
+      `
+        )
+        .get({ authorUsername }) as { cnt: number };
+
+      const postsLast7Days = now7?.cnt ?? 0;
+      const postsLast30Days = now30?.cnt ?? 0;
+
+      return {
+        postsLast7Days,
+        postsLast30Days,
+        frequencyState: computeFrequencyState(postsLast7Days, postsLast30Days),
+      };
     },
     close() {
       db.close();
