@@ -253,7 +253,7 @@
         background: #3b82f6;
         border-color: #2563eb;
       }
-      /* Frequency indicator */
+      /* Frequency indicator with instant tooltip */
       .freq-dot {
         display: inline-block;
         width: 8px;
@@ -262,6 +262,26 @@
         margin-right: 6px;
         vertical-align: middle;
         cursor: help;
+        position: relative;
+      }
+      .freq-dot:hover::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        left: 50%;
+        bottom: 100%;
+        transform: translateX(-50%);
+        background: #1e293b;
+        color: #e2e8f0;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.25rem;
+        border: 1px solid #334155;
+        white-space: pre-line;
+        font-size: 0.85em;
+        z-index: 100;
+        margin-bottom: 4px;
+        min-width: 180px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
       }
       .freq-fresh { background: #94a3b8; }
       .freq-healthy { background: #22c55e; }
@@ -694,7 +714,7 @@
             <td>${escapeHtml(tweet.id)}</td>
             <td>
               <span class="freq-dot freq-${escapeHtml(tweet.authorFrequency?.frequencyState || 'fresh')}" 
-                    title="${getFrequencyTooltip(tweet.authorFrequency)}"></span>
+                    data-tooltip="${escapeHtml(getFrequencyTooltip(tweet.authorFrequency))}"></span>
               <div class="cell-content" data-content-type="tweet" style="display: inline;">${escapeHtml(tweet.text)}</div>
               <span class="expand-toggle" data-target="tweet" style="display: none;">Show more</span>
             </td>
